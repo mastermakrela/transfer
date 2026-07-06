@@ -1,0 +1,47 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "transfer",
+  // set to your Cloudflare account id (`wrangler whoami`), or export CLOUDFLARE_ACCOUNT_ID instead
+  "account_id": "<YOUR_CLOUDFLARE_ACCOUNT_ID>",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+  },
+  // create with `wrangler r2 bucket create transfer-files [--jurisdiction eu]`
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "transfer-files", "jurisdiction": "eu" }],
+  // create with `wrangler kv namespace create METADATA` / `OAUTH_KV` and paste the resulting ids below
+  "kv_namespaces": [
+    { "binding": "METADATA", "id": "<YOUR_METADATA_KV_ID>" },
+    // required by @cloudflare/workers-oauth-provider (stores OAuth grants/clients)
+    { "binding": "OAUTH_KV", "id": "<YOUR_OAUTH_KV_ID>" },
+  ],
+  "durable_objects": {
+    // required by McpAgent (one DO instance per MCP client session)
+    "bindings": [{ "name": "MCP_OBJECT", "class_name": "TransferMCP" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TransferMCP"] }],
+  "triggers": {
+    // hourly is plenty precise against a 7-day default expiry
+    "crons": ["0 * * * *"],
+  },
+  "vars": {
+    "DEFAULT_TTL_SECONDS": 604800,
+    "MIN_TTL_SECONDS": 300,
+    "MAX_TTL_SECONDS": 2592000,
+    "MONTHLY_BUDGET_BYTES": 10737418240,
+    // account id + bucket name + jurisdiction are needed to build the S3-endpoint URL for presigned uploads
+    // (must match "account_id" above and the r2_buckets entry)
+    "ACCOUNT_ID": "<YOUR_CLOUDFLARE_ACCOUNT_ID>",
+    "R2_BUCKET_NAME": "transfer-files",
+    "R2_JURISDICTION": "eu",
+    // team domain and audience tag come from the Access application created in the dashboard, see README.md
+    "CF_ACCESS_TEAM_DOMAIN": "<YOUR_ACCESS_TEAM_DOMAIN>",
+    "CF_ACCESS_AUD": "<YOUR_ACCESS_APP_AUD>",
+  },
+  "observability": {
+    "enabled": true,
+  },
+}

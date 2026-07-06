@@ -1,0 +1,302 @@
+/*
+ * Kumo's standalone stylesheet only ships the Tailwind utility classes Kumo's
+ * own components happen to use internally -- it is not a general-purpose
+ * Tailwind build, so arbitrary utility classes (e.g. `rounded-[10px]`,
+ * `max-w-4xl`, responsive `sm:*` variants) are NOT available here. This file
+ * covers the handful of layout primitives this app needs on top of that.
+ */
+
+:root {
+	/* Kumo hardcodes `color-scheme: light` at :root and only flips to dark via
+	   a `[data-mode=dark]` attribute meant to be set by a JS theme toggle. This
+	   app has no toggle -- override so the `light-dark()` values Kumo's tokens
+	   are built on follow the OS preference automatically. */
+	color-scheme: light dark;
+}
+
+html {
+	-webkit-font-smoothing: antialiased;
+}
+
+/* Kumo's own Text component renders body copy as <p> (see text.js) -- this
+   picks up every description/secondary line in the app, including ones
+   rendered inside Kumo's own Empty/Dialog components. */
+p {
+	text-wrap: pretty;
+}
+
+.app-shell {
+	max-width: 84rem;
+	margin-inline: auto;
+	padding: 2.5rem 1.5rem;
+	display: flex;
+	flex-direction: column;
+	gap: 1.5rem;
+}
+
+.balance {
+	text-wrap: balance;
+}
+
+.tabular {
+	font-variant-numeric: tabular-nums;
+}
+
+.link-hover:hover {
+	text-decoration: underline;
+}
+
+.usage-bar {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+	/* Same radius token and shadow+hairline treatment as LayerCard (used for
+	   the file table right below this) instead of a hard border, so the two
+	   surfaces read as one system. */
+	border-radius: var(--radius-lg);
+	box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05), 0 0 0 1px var(--color-kumo-line);
+	padding: 1rem;
+}
+
+/* Upload section -- a plain div with the LayerCard "recipe" applied directly,
+   rather than the LayerCard component itself: LayerCard's single-surface
+   variant carries no explicit width, and adding utility classes for a flex
+   column here produced an element that shrank to its narrowest child instead
+   of spanning full width. This matches .usage-bar's exact treatment instead. */
+.upload-card {
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+	border-radius: var(--radius-lg);
+	box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05), 0 0 0 1px var(--color-kumo-line);
+	padding: 1rem;
+}
+
+.usage-bar-stat {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+	min-width: 10rem;
+}
+
+.usage-bar-meter {
+	flex: 1;
+}
+
+@media (min-width: 640px) {
+	.usage-bar {
+		flex-direction: row;
+		align-items: center;
+		gap: 2rem;
+	}
+}
+
+.dropzone {
+	min-height: 10rem;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 0.5rem;
+	border: 1px dashed var(--color-kumo-line);
+	border-radius: var(--radius-lg);
+	padding: 2rem;
+	text-align: center;
+	cursor: pointer;
+	transition-property: background-color, border-color;
+	transition-duration: 150ms;
+}
+
+.dropzone[data-dragging="true"] {
+	border-color: var(--color-kumo-brand);
+	background-color: var(--color-kumo-tint);
+}
+
+.upload-row {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	border: 1px solid var(--color-kumo-line);
+	border-radius: var(--radius-md);
+	padding: 0.75rem;
+}
+
+.upload-row-body {
+	min-width: 0;
+	flex: 1;
+}
+
+.truncate-cell {
+	max-width: 16rem;
+}
+
+.truncate-cell-sm {
+	max-width: 12rem;
+}
+
+.select-w-visibility {
+	width: 7rem;
+}
+
+.select-w-expiry {
+	width: 6rem;
+}
+
+.dialog-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 1rem;
+	margin-bottom: 1rem;
+}
+
+.bulk-actions-bar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	background-color: var(--color-kumo-tint);
+	border-radius: var(--radius-lg);
+	box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05), 0 0 0 1px var(--color-kumo-line);
+	padding: 0.5rem 1rem;
+}
+
+.skeleton-bar {
+	height: 1.25rem;
+	width: 100%;
+	border-radius: var(--radius-sm);
+	background-color: var(--color-kumo-fill);
+}
+
+/*
+ * Hit-area helpers -- some Kumo controls (icon-only "sm" square buttons,
+ * text+icon "sm" buttons) render visibly smaller than the 40x40px minimum
+ * target size. Rather than overriding Kumo's own size/padding (which would
+ * fight its internal button-size scale), pad the click target outward with
+ * an invisible pseudo-element. Only applied where there's enough surrounding
+ * whitespace that the expanded target can't overlap a neighboring control.
+ */
+.hit-target-square,
+.hit-target-tall {
+	position: relative;
+}
+
+/* For square icon buttons (~26px) -- pads evenly to ~40x40. */
+.hit-target-square::before {
+	content: "";
+	position: absolute;
+	inset: -7px;
+}
+
+/* For short, wide buttons (~26px tall, already wider than 40px) -- pads only
+   vertically so two adjacent buttons in a row don't gain overlapping targets. */
+.hit-target-tall::before {
+	content: "";
+	position: absolute;
+	inset: -7px 0;
+}
+
+/*
+ * Per-item list enter/exit -- split animations so rows fade/slide in with a
+ * stagger instead of the whole list appearing at once, and removed rows get
+ * a subtle exit instead of snapping away. `--row-index` is set inline per
+ * item (capped) to derive the stagger delay.
+ */
+.list-item-enter {
+	animation: list-item-in 220ms ease-out backwards;
+	animation-delay: calc(var(--row-index, 0) * 45ms);
+}
+
+.list-item-exit {
+	animation: list-item-out 160ms ease-in forwards;
+	pointer-events: none;
+}
+
+@keyframes list-item-in {
+	from {
+		opacity: 0;
+		transform: translateY(4px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes list-item-out {
+	from {
+		opacity: 1;
+		transform: translateY(0);
+	}
+	to {
+		opacity: 0;
+		transform: translateY(-4px);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.list-item-enter,
+	.list-item-exit {
+		animation: none;
+	}
+}
+
+.expiry-cell {
+	display: flex;
+	align-items: center;
+	gap: 0.25rem;
+}
+
+.visibility-cell {
+	display: flex;
+	align-items: center;
+	gap: 0.25rem;
+}
+
+/* Icon-only trigger for the expiry detail popover -- deliberately minimal
+   (no colored pill like Cloudflare's dashboard) to match this app's
+   grayscale-only design language. */
+.expiry-info-trigger {
+	appearance: none;
+	border: none;
+	background: transparent;
+	color: var(--text-color-kumo-subtle);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.25rem;
+	height: 1.25rem;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	transition-property: background-color, color;
+	transition-duration: 120ms;
+}
+
+.expiry-info-trigger:hover,
+.expiry-info-trigger[data-popup-open] {
+	background-color: var(--color-kumo-fill);
+	color: var(--text-color-kumo-default);
+}
+
+/* Popover.Content already supplies the card chrome (rounded-lg, shadow,
+   padding, bg-kumo-base) -- this just lays out the UTC/Relative/Timestamp
+   rows inside it. */
+.expiry-popover {
+	display: flex;
+	flex-direction: column;
+	gap: 0.6rem;
+	min-width: 15rem;
+}
+
+.expiry-popover-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	font-size: 0.8rem;
+}
+
+.expiry-popover-label {
+	color: var(--text-color-kumo-subtle);
+	white-space: nowrap;
+}

@@ -1,0 +1,4 @@
+# R2 S3-API credentials for presigning upload URLs.
+# Create via dashboard: R2 → Manage API Tokens → Create (Object Read & Write, scoped to the transfer-files bucket).
+R2_ACCESS_KEY_ID=dev-placeholder
+R2_SECRET_ACCESS_KEY=dev-placeholder

@@ -1,0 +1,17 @@
+{
+	"compilerOptions": {
+		"target": "es2021",
+		"lib": ["es2021", "dom", "dom.iterable"],
+		"module": "es2022",
+		"moduleResolution": "bundler",
+		"jsx": "react-jsx",
+		"resolveJsonModule": true,
+		"noEmit": true,
+		"isolatedModules": true,
+		"allowSyntheticDefaultImports": true,
+		"forceConsistentCasingInFileNames": true,
+		"strict": true,
+		"skipLibCheck": true
+	},
+	"include": ["client/**/*"]
+}

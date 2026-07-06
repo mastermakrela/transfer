@@ -1,0 +1,12 @@
+{
+	"rules": [
+		{
+			"allowed": {
+				"origins": ["https://<YOUR_WORKER_DOMAIN>"],
+				"methods": ["PUT"],
+				"headers": ["content-type", "content-length"]
+			},
+			"maxAgeSeconds": 3600
+		}
+	]
+}
