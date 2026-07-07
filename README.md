@@ -30,6 +30,17 @@ MCP tool access and the `/app` file manager are gated by a Cloudflare Access "Se
 
 R2 bucket jurisdiction is set via `R2_JURISDICTION` in `wrangler.jsonc` (defaults to `eu` — change or drop it to match wherever you create the bucket); presigned URLs are built from `ACCOUNT_ID` + `R2_BUCKET_NAME` + `R2_JURISDICTION`. If the bucket is EU-jurisdiction, `wrangler r2` commands against it need `--jurisdiction eu`. Bucket CORS (`r2-cors.json`) must allow `PUT` from your deployed Worker's origin for direct browser uploads.
 
+## Agent permission friction
+
+The upload flow is: agent calls `upload_file` to mint a presigned URL, then runs `curl -T <file> "<upload_url>"` to actually PUT the bytes. Some agent runtimes with strict tool-permission auto-approval (e.g. Claude Code's auto mode) flag that `curl` as a possible data-exfiltration pattern — "local file → external host → publicly-reachable link" — and hard-block it, even though the URL points at your own bucket. There's no way to route around this from inside the agent; it has to be granted in your permission config, and neither option below is a hard security boundary, just a tradeoff:
+
+- **Simplest**: allow-list the pattern in `.claude/settings.json`:
+  ```json
+  { "permissions": { "allow": ["Bash(curl -T * https://<YOUR_WORKER_DOMAIN>/*)", "Bash(curl -T * https://*.r2.cloudflarestorage.com/*)"] } }
+  ```
+  This is a plain glob over the command string, not real host binding — it won't stop a redirect (`curl -L`) or a `$VAR`-indirected URL that still starts with a matching prefix. Fine if you otherwise trust the environment; not a substitute for the option below if you don't.
+- **Stronger**: deny raw `Bash(curl *)`/`Bash(wget *)` outright and add a `PreToolUse` hook on `Bash` that inspects the command and only lets it through when the URL host exactly matches your bucket/worker domain. See Claude Code's hooks documentation for the mechanism.
+
 ## Setup
 
 This repo ships with placeholders — a fresh deployment needs:

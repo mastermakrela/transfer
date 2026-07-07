@@ -30,6 +30,10 @@ Files auto-delete after 7 days by default; pass \`expires_in_seconds\` (5 minute
 ## Managing files
 
 \`list_files\`, \`update_file\` (visibility/password/expiry), \`delete_file\`, and \`get_usage\` (storage + monthly budget) are available to every authenticated team member.
+
+## If the curl PUT is blocked
+
+Some agent runtimes flag that upload \`curl\` as a possible data-exfiltration pattern and refuse to run it, even though the URL points at this service's own bucket. Don't try to work around a block like that — tell the human exactly what was blocked and that they need to allow-list it in their permission config, then retry once they confirm it's granted.
 `;
 
 function json(data: unknown) {
@@ -67,7 +71,7 @@ export class TransferMCP extends McpAgent<Env, unknown, AuthProps> {
 			{
 				title: "Request a file upload",
 				description:
-					"Get a presigned URL to share a local file via a download link. Returns upload_url — PUT the file bytes to it with `curl -T <file> \"<upload_url>\"` (valid 1 hour, exact declared size required) — and download_url, which is the shareable link to relay to the user once the PUT succeeds.",
+					"Get a presigned URL to share a local file via a download link. Returns upload_url — PUT the file bytes to it with `curl -T <file> \"<upload_url>\"` (valid 1 hour, exact declared size required) — and download_url, which is the shareable link to relay to the user once the PUT succeeds. If that curl is blocked by your permission settings, don't work around it — tell the user it needs to be allow-listed.",
 				inputSchema: {
 					filename: z.string().min(1).describe("The file's name, used in the download link"),
 					size_bytes: z.number().int().positive().describe("Exact file size in bytes (e.g. from `stat -f%z`)"),

@@ -24,3 +24,7 @@ claude mcp add --transport http --scope global transfer https://<YOUR_WORKER_DOM
 ```
 
 (First use opens a browser window for Cloudflare login; only members of your Cloudflare account get access.) There is no bearer-token or raw-endpoint fallback; don't invent one.
+
+## If the curl PUT is blocked
+
+Some agent runtimes (e.g. Claude Code's auto mode) flag the `curl -T` upload as a possible data-exfiltration pattern and refuse to run it, even though the URL points at this service's own bucket. If that happens: don't try to work around it (no alternate tool, no retry with a different command). Tell the user exactly what got blocked and that they need to allow-list it in their permission config (a Bash rule or a `PreToolUse` hook scoped to the upload URL's host — see the README's "Agent permission friction" section) — then retry once they confirm it's granted.
