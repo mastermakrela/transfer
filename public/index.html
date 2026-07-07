@@ -39,7 +39,7 @@
 
 	<h2 class="mt-6 text-lg font-semibold text-kumo-strong">For AI agents</h2>
 	<p class="mt-2">Connect the MCP server once, then just ask your agent to share a file:</p>
-	<pre class="mt-2 rounded-lg bg-kumo-recessed text-sm font-mono overflow-x-auto">claude mcp add --transport http transfer <span id="origin"></span>/mcp</pre>
+	<pre class="mt-2 rounded-lg bg-kumo-recessed text-sm font-mono overflow-x-auto">claude mcp add --transport http --scope global transfer <span id="origin"></span>/mcp</pre>
 	<p class="mt-2 text-sm text-kumo-subtle">The server exposes <code class="rounded-md bg-kumo-tint font-mono">upload_file</code>, <code class="rounded-md bg-kumo-tint font-mono">list_files</code>, <code class="rounded-md bg-kumo-tint font-mono">update_file</code>, <code class="rounded-md bg-kumo-tint font-mono">delete_file</code>, and <code class="rounded-md bg-kumo-tint font-mono">get_usage</code> tools, plus a usage-guide resource. Login happens in the browser on first connect.</p>
 </div>
 

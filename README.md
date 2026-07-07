@@ -9,7 +9,7 @@ An OAuth-protected **MCP server** hands out presigned R2 upload URLs, so agents 
 - **`/mcp`** — MCP server (streamable HTTP) for AI agents. Tools: `upload_file` (returns a presigned PUT URL + download link), `list_files`, `update_file`, `delete_file`, `get_usage`; resource: `transfer://usage-guide`. Auth is OAuth: `@cloudflare/workers-oauth-provider` handles token issuance + dynamic client registration, and the `/authorize` endpoint sits behind Cloudflare Access ("Login with Cloudflare"), so only account members can connect. Connect with:
 
   ```
-  claude mcp add --transport http transfer https://<YOUR_WORKER_DOMAIN>/mcp
+  claude mcp add --transport http --scope global transfer https://<YOUR_WORKER_DOMAIN>/mcp
   ```
 
 - **`/app`** — the file manager (React + Kumo): upload via drag/drop, list/delete files, change visibility/password/expiry, copy a file's link, see usage vs. the monthly budget. Gated by the same Access application.

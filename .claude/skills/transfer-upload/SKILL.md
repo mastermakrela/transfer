@@ -20,7 +20,7 @@ The MCP server also exposes `list_files`, `update_file` (visibility/password/exp
 Stop and ask the human to connect it once:
 
 ```
-claude mcp add --transport http transfer https://<YOUR_WORKER_DOMAIN>/mcp
+claude mcp add --transport http --scope global transfer https://<YOUR_WORKER_DOMAIN>/mcp
 ```
 
 (First use opens a browser window for Cloudflare login; only members of your Cloudflare account get access.) There is no bearer-token or raw-endpoint fallback; don't invent one.
