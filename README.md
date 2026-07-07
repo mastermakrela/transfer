@@ -34,12 +34,14 @@ R2 bucket jurisdiction is set via `R2_JURISDICTION` in `wrangler.jsonc` (default
 
 The upload flow is: agent calls `upload_file` to mint a presigned URL, then runs `curl -T <file> "<upload_url>"` to actually PUT the bytes. Some agent runtimes with strict tool-permission auto-approval (e.g. Claude Code's auto mode) flag that `curl` as a possible data-exfiltration pattern — "local file → external host → publicly-reachable link" — and hard-block it, even though the URL points at your own bucket. There's no way to route around this from inside the agent; it has to be granted in your permission config, and neither option below is a hard security boundary, just a tradeoff:
 
-- **Simplest**: allow-list the pattern in `.claude/settings.json`:
+- **Simplest**: allow-list the pattern in `.claude/settings.json`, pinned to your exact worker domain and R2 host (`${ACCOUNT_ID}.${R2_JURISDICTION}.r2.cloudflarestorage.com`, see `src/presign.ts`) — avoid a bare `*.r2.cloudflarestorage.com`, which would allow-list uploads to any Cloudflare account's bucket, not just yours:
   ```json
-  { "permissions": { "allow": ["Bash(curl -T * https://<YOUR_WORKER_DOMAIN>/*)", "Bash(curl -T * https://*.r2.cloudflarestorage.com/*)"] } }
+  { "permissions": { "allow": ["Bash(curl -T * https://<YOUR_WORKER_DOMAIN>/*)", "Bash(curl -T * https://<YOUR_ACCOUNT_ID>.<YOUR_R2_JURISDICTION>.r2.cloudflarestorage.com/*)"] } }
   ```
-  This is a plain glob over the command string, not real host binding — it won't stop a redirect (`curl -L`) or a `$VAR`-indirected URL that still starts with a matching prefix. Fine if you otherwise trust the environment; not a substitute for the option below if you don't.
+  This is still a plain glob over the command string, not real host binding — it won't stop a redirect (`curl -L`) or a `$VAR`-indirected URL that still starts with a matching prefix. Fine if you otherwise trust the environment; not a substitute for the option below if you don't.
 - **Stronger**: deny raw `Bash(curl *)`/`Bash(wget *)` outright and add a `PreToolUse` hook on `Bash` that inspects the command and only lets it through when the URL host exactly matches your bucket/worker domain. See Claude Code's hooks documentation for the mechanism.
+
+The root page (`/`) surfaces both the pinned allow-list snippet and a one-time agent setup prompt generated from this — update the hardcoded `R2_HOST` placeholder in `public/index.html` when you fill in `wrangler.jsonc`'s `ACCOUNT_ID`/`R2_JURISDICTION`, since it can't be derived client-side from a static asset.
 
 ## Setup
 

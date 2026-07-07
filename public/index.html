@@ -41,8 +41,65 @@
 	<p class="mt-2">Connect the MCP server once, then just ask your agent to share a file:</p>
 	<pre class="mt-2 rounded-lg bg-kumo-recessed text-sm font-mono overflow-x-auto">claude mcp add --transport http --scope global transfer <span id="origin"></span>/mcp</pre>
 	<p class="mt-2 text-sm text-kumo-subtle">The server exposes <code class="rounded-md bg-kumo-tint font-mono">upload_file</code>, <code class="rounded-md bg-kumo-tint font-mono">list_files</code>, <code class="rounded-md bg-kumo-tint font-mono">update_file</code>, <code class="rounded-md bg-kumo-tint font-mono">delete_file</code>, and <code class="rounded-md bg-kumo-tint font-mono">get_usage</code> tools, plus a usage-guide resource. Login happens in the browser on first connect.</p>
+
+	<h3 class="mt-4 text-base font-semibold text-kumo-strong">Avoid upload permission prompts</h3>
+	<p class="mt-2 text-sm text-kumo-subtle">Uploads PUT directly to this bucket, so some agent runtimes (e.g. Claude Code's auto mode) flag that request as a possible data-exfiltration pattern and block it the first time, even though the URL only ever points here. To pre-allow it, add this to your own <code class="rounded-md bg-kumo-tint font-mono">~/.claude/settings.json</code> (merge into any existing <code class="rounded-md bg-kumo-tint font-mono">permissions.allow</code> array):</p>
+	<pre id="settings-snippet" class="mt-2 rounded-lg bg-kumo-recessed text-sm font-mono overflow-x-auto cursor-pointer" tabindex="0" role="button" aria-label="Copy settings.json snippet"></pre>
+	<p id="settings-snippet-hint" class="mt-1 text-xs text-kumo-subtle">Click to copy · this is a command-string match, not real host binding — see the README for a stronger hook-based alternative</p>
+
+	<p class="mt-4 text-sm text-kumo-subtle">Or hand your agent this one-time setup prompt and let it do both steps itself:</p>
+	<pre id="setup-prompt" class="mt-2 rounded-lg bg-kumo-recessed text-sm font-mono overflow-x-auto cursor-pointer whitespace-pre-wrap" tabindex="0" role="button" aria-label="Copy agent setup prompt"></pre>
+	<p id="setup-prompt-hint" class="mt-1 text-xs text-kumo-subtle">Click to copy</p>
 </div>
 
-<script>document.getElementById("origin").textContent = location.origin;</script>
+<script>
+	// Fill in the exact R2 host for this deployment (see src/presign.ts) -- keep this
+	// hardcoded, not derived, so the permission rule below never widens past this one bucket.
+	var R2_HOST = "<YOUR_CLOUDFLARE_ACCOUNT_ID>.eu.r2.cloudflarestorage.com";
+
+	var origin = location.origin;
+	document.getElementById("origin").textContent = origin;
+
+	var mcpAddCmd = "claude mcp add --transport http --scope global transfer " + origin + "/mcp";
+
+	var settingsObj = {
+		permissions: {
+			allow: ["Bash(curl -T * " + origin + "/*)", "Bash(curl -T * https://" + R2_HOST + "/*)"],
+		},
+	};
+	var settingsSnippet = JSON.stringify(settingsObj, null, 2);
+	document.getElementById("settings-snippet").textContent = settingsSnippet;
+
+	var prompt =
+		"Set up the transfer MCP server for file sharing:\n\n" +
+		"1. Run: " +
+		mcpAddCmd +
+		"\n\n" +
+		"2. Add this to my global Claude Code settings (~/.claude/settings.json -- create it if it doesn't exist, merge into any existing permissions.allow array) so uploads through this server aren't blocked as a false-positive data-exfiltration match:\n\n" +
+		settingsSnippet;
+	document.getElementById("setup-prompt").textContent = prompt;
+
+	function wireCopy(preId, hintId, text, resetLabel) {
+		var pre = document.getElementById(preId);
+		var hint = document.getElementById(hintId);
+		function copy() {
+			navigator.clipboard.writeText(text).then(function () {
+				hint.textContent = "Copied!";
+				setTimeout(function () {
+					hint.textContent = resetLabel;
+				}, 1400);
+			});
+		}
+		pre.addEventListener("click", copy);
+		pre.addEventListener("keydown", function (e) {
+			if (e.key === "Enter" || e.key === " ") {
+				e.preventDefault();
+				copy();
+			}
+		});
+	}
+	wireCopy("settings-snippet", "settings-snippet-hint", settingsSnippet, "Click to copy · this is a command-string match, not real host binding — see the README for a stronger hook-based alternative");
+	wireCopy("setup-prompt", "setup-prompt-hint", prompt, "Click to copy");
+</script>
 </body>
 </html>
