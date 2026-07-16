@@ -134,6 +134,33 @@ p {
 	gap: 0.25rem;
 }
 
+.visibility-cell {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25rem;
+}
+
+.select-w-visibility {
+	width: 7rem;
+}
+
+.select-w-expiry {
+	width: 6rem;
+}
+
+/* Same hit-area padding trick as client/app/app.css -- the icon-only "sm"
+   square button (change-password key icon) renders smaller than the 40x40px
+   minimum target size. */
+.hit-target-square {
+	position: relative;
+}
+
+.hit-target-square::before {
+	content: "";
+	position: absolute;
+	inset: -7px;
+}
+
 .expiry-info-trigger {
 	appearance: none;
 	border: none;

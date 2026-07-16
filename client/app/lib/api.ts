@@ -3,22 +3,12 @@
  * handling lives in ../../shared/api.ts, reused by the /d landing page too.
  */
 import { apiFetch } from "../../shared/api";
+import type { PublicFileRecord, Visibility } from "../../shared/api";
 
-export { AuthError, ApiError, deleteFile } from "../../shared/api";
+export { AuthError, ApiError, deleteFile, patchFile } from "../../shared/api";
+export type { Visibility } from "../../shared/api";
 
-export type Visibility = "public" | "password" | "private";
-
-export interface FileRecord {
-	id: string;
-	filename: string;
-	contentType: string;
-	size: number;
-	visibility: Visibility;
-	owner: string;
-	createdAt: number;
-	expiresAt: number;
-	hasPassword: boolean;
-}
+export type FileRecord = PublicFileRecord;
 
 export interface UsageSummary {
 	currentBytes: number;
@@ -56,17 +46,6 @@ export function presignUpload(req: {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(req),
-	});
-}
-
-export function patchFile(
-	id: string,
-	patch: { visibility?: Visibility; expiresInSeconds?: number; password?: string },
-): Promise<FileRecord> {
-	return apiFetch(`/app/api/files/${id}`, {
-		method: "PATCH",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(patch),
 	});
 }
 

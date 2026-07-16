@@ -8,7 +8,7 @@ import { useKumoToastManager } from "@cloudflare/kumo/components/toast";
 import { useId, useRef, useState, type CSSProperties } from "react";
 
 import { ApiError, AuthError, presignUpload, uploadToR2, type Visibility } from "../lib/api";
-import { DEFAULT_EXPIRY_SECONDS, EXPIRY_OPTIONS } from "../lib/expiry-options";
+import { DEFAULT_EXPIRY_SECONDS, EXPIRY_OPTIONS } from "../../shared/expiry-options";
 import { formatBytes } from "../../shared/format";
 
 interface UploadItem {

@@ -6,11 +6,11 @@ import { CheckIcon, CopySimpleIcon, KeyIcon, TrashIcon } from "@phosphor-icons/r
 import { useState, type CSSProperties } from "react";
 
 import type { FileRecord, Visibility } from "../lib/api";
-import { EXPIRY_OPTIONS } from "../lib/expiry-options";
 import { ExpiryInfo } from "../../shared/ExpiryInfo";
+import { EXPIRY_OPTIONS } from "../../shared/expiry-options";
 import { formatBytes, formatRelativeTime } from "../../shared/format";
+import { SetPasswordDialog } from "../../shared/SetPasswordDialog";
 import { useCopyFeedback } from "../../shared/useCopyFeedback";
-import { SetPasswordDialog } from "./SetPasswordDialog";
 
 interface FileRowProps {
 	file: FileRecord;

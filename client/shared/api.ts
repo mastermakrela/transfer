@@ -46,3 +46,28 @@ export async function apiFetch<T>(input: string, init?: RequestInit): Promise<T>
 export function deleteFile(id: string): Promise<{ ok: true }> {
 	return apiFetch(`/app/api/files/${id}`, { method: "DELETE" });
 }
+
+export type Visibility = "public" | "password" | "private";
+
+export interface PublicFileRecord {
+	id: string;
+	filename: string;
+	contentType: string;
+	size: number;
+	visibility: Visibility;
+	owner: string;
+	createdAt: number;
+	expiresAt: number;
+	hasPassword: boolean;
+}
+
+export function patchFile(
+	id: string,
+	patch: { visibility?: Visibility; expiresInSeconds?: number; password?: string },
+): Promise<PublicFileRecord> {
+	return apiFetch(`/app/api/files/${id}`, {
+		method: "PATCH",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(patch),
+	});
+}
