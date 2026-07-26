@@ -130,6 +130,18 @@ p {
 	max-width: 16rem;
 }
 
+/* Folder row: icon + name + file-count, name truncates, count stays put. */
+.bundle-cell {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	min-width: 0;
+}
+
+.bundle-file-count {
+	flex-shrink: 0;
+}
+
 .truncate-cell-sm {
 	max-width: 12rem;
 }

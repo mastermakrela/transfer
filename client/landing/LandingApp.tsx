@@ -1,7 +1,7 @@
 import { Button, LinkButton } from "@cloudflare/kumo/components/button";
 import { Select } from "@cloudflare/kumo/components/select";
 import { Toasty, useKumoToastManager } from "@cloudflare/kumo/components/toast";
-import { KeyIcon } from "@phosphor-icons/react";
+import { FolderIcon, KeyIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 
 import { ApiError, AuthError, patchFile, type Visibility } from "../shared/api";
@@ -9,6 +9,7 @@ import { EXPIRY_OPTIONS } from "../shared/expiry-options";
 import { ExpiryInfo } from "../shared/ExpiryInfo";
 import { formatBytes, formatRelativeTime } from "../shared/format";
 import { SetPasswordDialog } from "../shared/SetPasswordDialog";
+import { BundleView } from "./components/BundleView";
 import { DeleteButton } from "./components/DeleteButton";
 import { HtmlPreview } from "./components/HtmlPreview";
 import { ImagePreview } from "./components/ImagePreview";
@@ -22,6 +23,13 @@ import type { FileData, PageData } from "./types";
 const NOW_TICK_MS = 45_000;
 
 export function LandingApp({ data }: { data: PageData }) {
+	if (data.state === "bundle") {
+		return (
+			<Toasty>
+				<BundleView data={data} />
+			</Toasty>
+		);
+	}
 	if (data.state !== "ready") return <StatusPage data={data} />;
 	return (
 		<Toasty>
@@ -102,6 +110,12 @@ function ReadyView({ data }: { data: FileData }) {
 		<div className="page">
 			<aside className="sidebar">
 				<div>
+					{data.bundle && (
+						<a href={data.bundle.url} className="bundle-breadcrumb">
+							<FolderIcon size={14} weight="fill" aria-hidden />
+							<span>{data.bundle.name}</span>
+						</a>
+					)}
 					<h1 className="sidebar-title">{data.filename}</h1>
 					<div className="meta-row">
 						{data.canManage ? (

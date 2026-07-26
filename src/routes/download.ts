@@ -1,14 +1,30 @@
-import { Hono } from "hono";
+import { makeZip, predictLength } from "client-zip";
+import { type Context, Hono } from "hono";
 import QRCode from "qrcode";
 import { verifyAccessSession } from "../access";
-import { getFile } from "../kv";
+import { getBundle, getBundleFiles, getFile, resolveGate } from "../kv";
 import { createUnlockCookie, isUnlocked, verifyPassword } from "../password";
-import type { FileRecord } from "../types";
+import type { FileRecord, Gated } from "../types";
 
 const download = new Hono<{ Bindings: Env }>();
 
+// Shared access gate for byte-serving routes (member /raw and bundle /all.zip). `gate` is
+// whichever record governs access -- the file itself, or its parent bundle. Returns a 401
+// Response when access is denied, or null when the caller may proceed.
+async function denyRawAccess(c: Context<{ Bindings: Env }>, gate: Gated): Promise<Response | null> {
+	if (gate.visibility === "private") {
+		const session = await verifyAccessSession(c.req.raw, c.env);
+		if (!session) return c.text("this is private — log in at /app first, then reopen this link\n", 401);
+	}
+	if (gate.visibility === "password" && !(await isUnlocked(c.req.raw, c.env, gate.id))) {
+		return c.text("this is password protected — open the landing page first to unlock it\n", 401);
+	}
+	return null;
+}
+
 // GET /d/:id/:filename/raw — byte streaming for <img>/<video>/<audio> src and the actual
-// download link. ?download=1 swaps content-disposition to attachment.
+// download link. ?download=1 swaps content-disposition to attachment. Bundled files gate
+// through their parent bundle (resolveGate).
 download.get("/d/:id/:filename/raw", async (c) => {
 	const id = c.req.param("id");
 	const record = await getFile(c.env, id);
@@ -16,15 +32,8 @@ download.get("/d/:id/:filename/raw", async (c) => {
 		return c.text("not found or expired\n", 404);
 	}
 
-	if (record.visibility === "private") {
-		const session = await verifyAccessSession(c.req.raw, c.env);
-		if (!session) {
-			return c.text("this file is private — log in at /app first, then reopen this link\n", 401);
-		}
-	}
-	if (record.visibility === "password" && !(await isUnlocked(c.req.raw, c.env, record.id))) {
-		return c.text("this file is password protected — open the landing page first to unlock it\n", 401);
-	}
+	const denied = await denyRawAccess(c, await resolveGate(c.env, record));
+	if (denied) return denied;
 
 	const object = await c.env.FILES.get(record.r2Key);
 	if (!object) return c.text("file missing from storage\n", 404);
@@ -53,18 +62,30 @@ download.get("/d/:id/:filename", async (c) => {
 		return c.html(renderShell({ title: "Not found", payload: { state: "not-found" } }), 404);
 	}
 
+	// A bundled file defers gating to its parent bundle (bundle owns visibility/password).
+	// Loading the bundle here also gives us its name for the "part of folder" breadcrumb.
+	const bundle = record.bundleId ? await getBundle(c.env, record.bundleId) : null;
+	const gate: Gated = bundle ?? record;
+
 	// Checked for every file, not just private ones — a valid Access session (any account
 	// member, matching this app's team-visible-not-owner-scoped model) is what gates the
 	// Delete button on an otherwise publicly-viewable landing page.
 	const session = await verifyAccessSession(c.req.raw, c.env);
-	if (record.visibility === "private" && !session) {
+	if (gate.visibility === "private" && !session) {
 		return c.html(renderShell({ title: "Sign in required", payload: { state: "sign-in-required" } }), 401);
 	}
-	if (record.visibility === "password" && !(await isUnlocked(c.req.raw, c.env, record.id))) {
+	if (gate.visibility === "password" && !(await isUnlocked(c.req.raw, c.env, gate.id))) {
+		// A bundled member unlocks at its folder (one unlock covers the whole set); a
+		// standalone file unlocks itself. Both set the same kind of unlock cookie.
+		if (bundle) return c.redirect(`/f/${bundle.id}`, 302);
 		return c.html(
 			renderShell({
 				title: record.filename,
-				payload: { state: "password-required", id: record.id, filename: record.filename },
+				payload: {
+					state: "password-required",
+					title: record.filename,
+					unlockAction: `/d/${record.id}/${encodeURIComponent(record.filename)}/unlock`,
+				},
 			}),
 			401,
 		);
@@ -99,14 +120,17 @@ download.get("/d/:id/:filename", async (c) => {
 				extension,
 				size: record.size,
 				contentType: record.contentType,
-				visibility: record.visibility,
+				visibility: gate.visibility,
 				owner: record.owner,
 				expiresAt: record.expiresAt,
 				pageUrl,
 				rawUrl: rawUrl(record),
 				downloadUrl: rawUrl(record, { download: true }),
 				qrSvg,
-				canManage: session !== null,
+				// Bundled files inherit the bundle's access; per-file visibility/expiry can't be
+				// changed independently, so the file page hides those controls and links back instead.
+				canManage: session !== null && !bundle,
+				bundle: bundle ? { name: bundle.name, url: `/f/${bundle.id}` } : null,
 				previewKind,
 				previewText,
 				textTooLargeBytes,
@@ -115,17 +139,17 @@ download.get("/d/:id/:filename", async (c) => {
 	);
 });
 
-// POST /d/:id/:filename/unlock — verifies a password-protected file's password and,
-// on success, sets a cookie scoped to this file's own routes so the landing page and
-// raw route both recognize it as unlocked without asking again.
+// POST /d/:id/:filename/unlock — verifies a standalone password-protected file's password
+// (bundled members unlock at /f/:id/unlock instead) and, on success, sets a cookie so the
+// landing page and raw route both recognize it as unlocked without asking again.
 download.post("/d/:id/:filename/unlock", async (c) => {
 	const id = c.req.param("id");
 	const record = await getFile(c.env, id);
 	if (!record || record.expiresAt <= Date.now()) {
 		return c.html(renderShell({ title: "Not found", payload: { state: "not-found" } }), 404);
 	}
-	if (record.visibility !== "password") {
-		return c.redirect(`/d/${record.id}/${record.filename}`, 303);
+	if (record.visibility !== "password" || record.bundleId) {
+		return c.redirect(record.bundleId ? `/f/${record.bundleId}` : `/d/${record.id}/${record.filename}`, 303);
 	}
 
 	const form = await c.req.parseBody();
@@ -140,8 +164,8 @@ download.post("/d/:id/:filename/unlock", async (c) => {
 				title: record.filename,
 				payload: {
 					state: "password-required",
-					id: record.id,
-					filename: record.filename,
+					title: record.filename,
+					unlockAction: `/d/${record.id}/${encodeURIComponent(record.filename)}/unlock`,
 					error: "Incorrect password.",
 				},
 			}),
@@ -154,6 +178,130 @@ download.post("/d/:id/:filename/unlock", async (c) => {
 		status: 303,
 		headers: { Location: `/d/${record.id}/${record.filename}`, "Set-Cookie": cookie },
 	});
+});
+
+// GET /f/:id — bundle (shareable folder) landing page. Same shell/hydration path as the
+// single-file page, with a "bundle" payload the landing app renders as a file listing.
+download.get("/f/:id", async (c) => {
+	const id = c.req.param("id");
+	const bundle = await getBundle(c.env, id);
+	if (!bundle || bundle.expiresAt <= Date.now()) {
+		return c.html(renderShell({ title: "Not found", payload: { state: "not-found" } }), 404);
+	}
+
+	const session = await verifyAccessSession(c.req.raw, c.env);
+	if (bundle.visibility === "private" && !session) {
+		return c.html(renderShell({ title: "Sign in required", payload: { state: "sign-in-required" } }), 401);
+	}
+	if (bundle.visibility === "password" && !(await isUnlocked(c.req.raw, c.env, bundle.id))) {
+		return c.html(
+			renderShell({
+				title: bundle.name,
+				payload: { state: "password-required", title: bundle.name, unlockAction: `/f/${bundle.id}/unlock` },
+			}),
+			401,
+		);
+	}
+
+	const files = await getBundleFiles(c.env, bundle);
+	const pageUrl = c.req.url;
+	const qrSvg = await QRCode.toString(pageUrl, { type: "svg", margin: 1 });
+
+	return c.html(
+		renderShell({
+			title: bundle.name,
+			payload: {
+				state: "bundle",
+				id: bundle.id,
+				name: bundle.name,
+				owner: bundle.owner,
+				visibility: bundle.visibility,
+				expiresAt: bundle.expiresAt,
+				pageUrl,
+				zipUrl: `/f/${bundle.id}/all.zip`,
+				qrSvg,
+				canManage: session !== null,
+				totalSize: files.reduce((sum, f) => sum + f.size, 0),
+				files: files.map((f) => ({
+					id: f.id,
+					filename: f.filename,
+					extension: fileExtension(f.filename),
+					size: f.size,
+					contentType: f.contentType,
+					previewKind: determinePreviewKind(f, fileExtension(f.filename)),
+					pageUrl: `/d/${f.id}/${encodeURIComponent(f.filename)}`,
+					downloadUrl: rawUrl(f, { download: true }),
+				})),
+			},
+		}),
+	);
+});
+
+// POST /f/:id/unlock — bundle password unlock; sets the unlock cookie for the whole folder.
+download.post("/f/:id/unlock", async (c) => {
+	const id = c.req.param("id");
+	const bundle = await getBundle(c.env, id);
+	if (!bundle || bundle.expiresAt <= Date.now()) {
+		return c.html(renderShell({ title: "Not found", payload: { state: "not-found" } }), 404);
+	}
+	if (bundle.visibility !== "password") {
+		return c.redirect(`/f/${bundle.id}`, 303);
+	}
+
+	const form = await c.req.parseBody();
+	const password = typeof form.password === "string" ? form.password : "";
+	const valid =
+		password && bundle.passwordHash && bundle.passwordSalt
+			? await verifyPassword(password, bundle.passwordHash, bundle.passwordSalt)
+			: false;
+	if (!valid) {
+		return c.html(
+			renderShell({
+				title: bundle.name,
+				payload: {
+					state: "password-required",
+					title: bundle.name,
+					unlockAction: `/f/${bundle.id}/unlock`,
+					error: "Incorrect password.",
+				},
+			}),
+			401,
+		);
+	}
+
+	const cookie = await createUnlockCookie(c.env, bundle.id);
+	return new Response(null, { status: 303, headers: { Location: `/f/${bundle.id}`, "Set-Cookie": cookie } });
+});
+
+// GET /f/:id/all.zip — streams every member into a single zip. STORE (no deflate): the
+// members are already-compressed artifacts (apks, images, archives), so deflating would
+// burn CPU for ~nothing, and store-mode lets client-zip stream straight from R2 with a
+// known Content-Length (predictLength) so the browser shows real download progress.
+download.get("/f/:id/all.zip", async (c) => {
+	const id = c.req.param("id");
+	const bundle = await getBundle(c.env, id);
+	if (!bundle || bundle.expiresAt <= Date.now()) {
+		return c.text("not found or expired\n", 404);
+	}
+
+	const denied = await denyRawAccess(c, bundle);
+	if (denied) return denied;
+
+	const files = await getBundleFiles(c.env, bundle);
+	const entries: Array<{ name: string; input: ReadableStream; size: number; lastModified: Date }> = [];
+	for (const f of files) {
+		const object = await c.env.FILES.get(f.r2Key);
+		if (object) entries.push({ name: f.filename, input: object.body, size: object.size, lastModified: new Date(f.createdAt) });
+	}
+	if (entries.length === 0) return c.text("this folder has no downloadable files\n", 404);
+
+	const zipName = (bundle.name.replace(/[^A-Za-z0-9._ -]/g, "_").trim() || "bundle").slice(0, 100);
+	const headers = new Headers({
+		"content-type": "application/zip",
+		"content-disposition": `attachment; filename="${zipName}.zip"`,
+		"content-length": predictLength(entries.map((e) => ({ name: e.name, size: e.size }))).toString(),
+	});
+	return new Response(makeZip(entries), { headers });
 });
 
 export default download;
@@ -182,10 +330,9 @@ const TEXT_PREVIEWABLE_EXTENSIONS = new Set(["txt", "log", "csv", "json", "yml",
 const MARKDOWN_EXTENSIONS = new Set(["md", "markdown"]);
 const HTML_EXTENSIONS = new Set(["html", "htm"]);
 
-function determinePreviewKind(
-	record: FileRecord,
-	extension: string,
-): "image" | "video" | "audio" | "html" | "markdown" | "text" | "generic" {
+type PreviewKind = "image" | "video" | "audio" | "html" | "markdown" | "text" | "generic";
+
+function determinePreviewKind(record: FileRecord, extension: string): PreviewKind {
 	if (record.contentType.startsWith("image/")) return "image";
 	if (record.contentType.startsWith("video/")) return "video";
 	if (record.contentType.startsWith("audio/")) return "audio";
@@ -198,11 +345,23 @@ function determinePreviewKind(
 	return "generic";
 }
 
+/** A single file as listed on a bundle page. */
+interface BundleFileEntry {
+	id: string;
+	filename: string;
+	extension: string;
+	size: number;
+	contentType: string;
+	previewKind: PreviewKind;
+	pageUrl: string;
+	downloadUrl: string;
+}
+
 /** Matches client/landing/types.ts's `PageData` -- kept in sync manually, same as the pre-existing payload. */
 type PageData =
 	| { state: "not-found" }
 	| { state: "sign-in-required" }
-	| { state: "password-required"; id: string; filename: string; error?: string }
+	| { state: "password-required"; title: string; unlockAction: string; error?: string }
 	| {
 			state: "ready";
 			id: string;
@@ -218,9 +377,24 @@ type PageData =
 			downloadUrl: string;
 			qrSvg: string;
 			canManage: boolean;
-			previewKind: "image" | "video" | "audio" | "html" | "markdown" | "text" | "generic";
+			bundle: { name: string; url: string } | null;
+			previewKind: PreviewKind;
 			previewText: string | null;
 			textTooLargeBytes: number | null;
+	  }
+	| {
+			state: "bundle";
+			id: string;
+			name: string;
+			owner: string;
+			visibility: "public" | "password" | "private";
+			expiresAt: number;
+			pageUrl: string;
+			zipUrl: string;
+			qrSvg: string;
+			canManage: boolean;
+			totalSize: number;
+			files: BundleFileEntry[];
 	  };
 
 // Renders a shell that hydrates client/landing/ (React + Kumo) for every state -- found,

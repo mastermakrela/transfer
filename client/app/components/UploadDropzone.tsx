@@ -1,13 +1,15 @@
 import { CloudArrowUpIcon, WarningIcon, XIcon } from "@phosphor-icons/react";
 import { Button } from "@cloudflare/kumo/components/button";
+import { Input } from "@cloudflare/kumo/components/input";
 import { Meter } from "@cloudflare/kumo/components/meter";
 import { Select } from "@cloudflare/kumo/components/select";
 import { SensitiveInput } from "@cloudflare/kumo/components/sensitive-input";
+import { Switch } from "@cloudflare/kumo/components/switch";
 import { Text } from "@cloudflare/kumo/components/text";
 import { useKumoToastManager } from "@cloudflare/kumo/components/toast";
 import { useId, useRef, useState, type CSSProperties } from "react";
 
-import { ApiError, AuthError, presignUpload, uploadToR2, type Visibility } from "../lib/api";
+import { ApiError, AuthError, createBundle, presignUpload, uploadToR2, type Visibility } from "../lib/api";
 import { DEFAULT_EXPIRY_SECONDS, EXPIRY_OPTIONS } from "../../shared/expiry-options";
 import { formatBytes } from "../../shared/format";
 
@@ -27,6 +29,8 @@ export function UploadDropzone({ onUploaded }: { onUploaded: () => void }) {
 	const [visibility, setVisibility] = useState<Visibility>("private");
 	const [password, setPassword] = useState("");
 	const [expiresIn, setExpiresIn] = useState(DEFAULT_EXPIRY_SECONDS);
+	const [folderMode, setFolderMode] = useState(false);
+	const [folderName, setFolderName] = useState("");
 	const [isDragging, setIsDragging] = useState(false);
 	const [uploads, setUploads] = useState<UploadItem[]>([]);
 	const [exitingKeys, setExitingKeys] = useState<Set<string>>(new Set());
@@ -81,13 +85,75 @@ export function UploadDropzone({ onUploaded }: { onUploaded: () => void }) {
 		}
 	}
 
+	// Folder mode: create ONE bundle for all dropped files, then PUT each to its own presigned
+	// URL. A single link (the /f/... folder page) covers the whole set.
+	async function uploadBundle(files: File[]) {
+		const items = files.map((file) => ({
+			key: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+			file,
+		}));
+		setUploads((prev) => [
+			...prev,
+			...items.map(({ key, file }) => ({
+				key,
+				filename: file.name,
+				size: file.size,
+				progress: 0,
+				status: "uploading" as const,
+			})),
+		]);
+		try {
+			const { uploads: targets } = await createBundle({
+				name: folderName.trim(),
+				visibility,
+				expiresIn,
+				password: visibility === "password" ? password : undefined,
+				files: files.map((f) => ({ filename: f.name, size: f.size, contentType: f.type || "application/octet-stream" })),
+			});
+			// Server preserves file order, so index-align targets to the rows we just created.
+			await Promise.all(
+				items.map(({ key, file }, i) =>
+					uploadToR2(targets[i].uploadUrl, file, (fraction) => updateUpload(key, { progress: fraction }))
+						.then(() => removeUpload(key))
+						.catch((err) => {
+							updateUpload(key, { status: "error", error: err instanceof Error ? err.message : "upload failed" });
+							throw err;
+						}),
+				),
+			);
+			toasts.add({ variant: "success", title: "Folder shared", description: folderName.trim() });
+			setFolderName("");
+			onUploaded();
+		} catch (err) {
+			const message =
+				err instanceof AuthError ? "not signed in" : err instanceof ApiError ? err.message : "upload failed";
+			// Mark any still-uploading rows as failed so the whole batch reflects the error.
+			setUploads((prev) =>
+				prev.map((u) =>
+					items.some((it) => it.key === u.key) && u.status === "uploading" ? { ...u, status: "error", error: message } : u,
+				),
+			);
+			toasts.add({ variant: "error", title: "Folder upload failed", description: message });
+			onUploaded();
+		}
+	}
+
 	function handleFiles(fileList: FileList | null) {
 		if (!fileList || fileList.length === 0) return;
 		if (visibility === "password" && !password) {
 			toasts.add({ variant: "error", title: "Password required", description: "Set a password before uploading." });
 			return;
 		}
-		for (const file of Array.from(fileList)) void uploadOne(file);
+		const files = Array.from(fileList);
+		if (folderMode) {
+			if (!folderName.trim()) {
+				toasts.add({ variant: "error", title: "Folder name required", description: "Name the folder before uploading." });
+				return;
+			}
+			void uploadBundle(files);
+			return;
+		}
+		for (const file of files) void uploadOne(file);
 	}
 
 	return (
@@ -122,6 +188,19 @@ export function UploadDropzone({ onUploaded }: { onUploaded: () => void }) {
 					onValueChange={(v) => setExpiresIn(v ?? DEFAULT_EXPIRY_SECONDS)}
 					items={EXPIRY_OPTIONS}
 				/>
+				<div className="flex items-center pb-1.5">
+					<Switch label="Group into a folder" size="sm" checked={folderMode} onCheckedChange={setFolderMode} />
+				</div>
+				{folderMode && (
+					<Input
+						label="Folder name"
+						size="sm"
+						className="w-56"
+						value={folderName}
+						onValueChange={setFolderName}
+						placeholder="e.g. Acme Android builds"
+					/>
+				)}
 			</div>
 
 			<div

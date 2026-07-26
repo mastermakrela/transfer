@@ -283,6 +283,113 @@ p {
 	color: var(--text-color-kumo-subtle);
 }
 
+/* ---- Bundle (folder) page ---- */
+.bundle-breadcrumb {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3rem;
+	margin-bottom: 0.5rem;
+	font-size: 0.78rem;
+	font-weight: 500;
+	color: var(--text-color-kumo-subtle);
+	text-decoration: none;
+	border-radius: var(--radius-sm);
+}
+
+a.bundle-breadcrumb:hover {
+	color: var(--text-color-kumo-default);
+}
+
+.bundle-breadcrumb-static {
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	font-size: 0.7rem;
+}
+
+.bundle-pane {
+	padding: 2rem;
+	overflow-y: auto;
+	min-width: 0;
+}
+
+@media (max-width: 760px) {
+	.bundle-pane {
+		padding: 1.25rem;
+	}
+}
+
+.bundle-empty {
+	color: var(--text-color-kumo-subtle);
+	font-size: 0.9rem;
+}
+
+.bundle-file-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	max-width: 44rem;
+}
+
+.bundle-file-row {
+	display: flex;
+	align-items: center;
+	gap: 1rem;
+	padding: 0.7rem 0.85rem;
+	border: 1px solid var(--color-kumo-line);
+	border-radius: var(--radius-md);
+	transition-property: background-color;
+	transition-duration: 120ms;
+}
+
+.bundle-file-row:hover {
+	background-color: var(--color-kumo-fill);
+}
+
+.bundle-file-main {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	flex: 1;
+	min-width: 0;
+	text-decoration: none;
+	color: inherit;
+}
+
+.bundle-file-ext {
+	flex-shrink: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 3rem;
+	padding: 0.35rem 0.4rem;
+	font-size: 0.62rem;
+	font-weight: 700;
+	letter-spacing: 0.05em;
+	color: var(--text-color-kumo-subtle);
+	background-color: var(--color-kumo-recessed);
+	border: 1px solid var(--color-kumo-line);
+	border-radius: var(--radius-sm);
+}
+
+.bundle-file-name {
+	min-width: 0;
+	overflow-wrap: anywhere;
+	font-size: 0.9rem;
+}
+
+.bundle-file-main:hover .bundle-file-name {
+	text-decoration: underline;
+}
+
+.bundle-file-size {
+	flex-shrink: 0;
+	font-size: 0.8rem;
+	color: var(--text-color-kumo-subtle);
+}
+
 /* ---- Preview pane: as large as the viewport allows ---- */
 .preview-pane {
 	display: flex;

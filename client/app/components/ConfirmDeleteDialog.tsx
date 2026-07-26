@@ -3,14 +3,16 @@ import { Dialog } from "@cloudflare/kumo/components/dialog";
 import { XIcon } from "@phosphor-icons/react";
 
 interface ConfirmDeleteDialogProps {
-	/** Filenames pending deletion; dialog is open whenever this is non-null. */
+	/** Names pending deletion; dialog is open whenever this is non-null. */
 	pending: string[] | null;
 	busy: boolean;
+	/** What's being deleted, singular (default "file"). E.g. "folder" for a bundle. */
+	noun?: string;
 	onCancel: () => void;
 	onConfirm: () => void;
 }
 
-export function ConfirmDeleteDialog({ pending, busy, onCancel, onConfirm }: ConfirmDeleteDialogProps) {
+export function ConfirmDeleteDialog({ pending, busy, noun = "file", onCancel, onConfirm }: ConfirmDeleteDialogProps) {
 	const count = pending?.length ?? 0;
 
 	return (
@@ -18,7 +20,7 @@ export function ConfirmDeleteDialog({ pending, busy, onCancel, onConfirm }: Conf
 			<Dialog className="p-6" size="sm">
 				<div className="dialog-header">
 					<Dialog.Title className="text-lg font-semibold">
-						Delete {count === 1 ? "file" : `${count} files`}?
+						Delete {count === 1 ? noun : `${count} ${noun}s`}?
 					</Dialog.Title>
 					<Dialog.Close
 						render={(props) => (
@@ -40,7 +42,9 @@ export function ConfirmDeleteDialog({ pending, busy, onCancel, onConfirm }: Conf
 							This permanently deletes <strong>{pending?.[0]}</strong>. This can&rsquo;t be undone.
 						</>
 					) : (
-						<>This permanently deletes {count} files. This can&rsquo;t be undone.</>
+						<>
+							This permanently deletes {count} {noun}s. This can&rsquo;t be undone.
+						</>
 					)}
 				</Dialog.Description>
 				<div className="mt-6 flex justify-end gap-2">

@@ -71,3 +71,29 @@ export function patchFile(
 		body: JSON.stringify(patch),
 	});
 }
+
+export interface PublicBundleRecord {
+	id: string;
+	name: string;
+	visibility: Visibility;
+	owner: string;
+	createdAt: number;
+	expiresAt: number;
+	hasPassword: boolean;
+	files: PublicFileRecord[];
+}
+
+export function patchBundle(
+	id: string,
+	patch: { visibility?: Visibility; expiresInSeconds?: number; password?: string },
+): Promise<PublicBundleRecord> {
+	return apiFetch(`/app/api/bundles/${id}`, {
+		method: "PATCH",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(patch),
+	});
+}
+
+export function deleteBundle(id: string): Promise<{ ok: true }> {
+	return apiFetch(`/app/api/bundles/${id}`, { method: "DELETE" });
+}

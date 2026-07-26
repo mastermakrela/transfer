@@ -3,12 +3,13 @@
  * handling lives in ../../shared/api.ts, reused by the /d landing page too.
  */
 import { apiFetch } from "../../shared/api";
-import type { PublicFileRecord, Visibility } from "../../shared/api";
+import type { PublicBundleRecord, PublicFileRecord, Visibility } from "../../shared/api";
 
-export { AuthError, ApiError, deleteFile, patchFile } from "../../shared/api";
+export { AuthError, ApiError, deleteFile, patchFile, deleteBundle, patchBundle } from "../../shared/api";
 export type { Visibility } from "../../shared/api";
 
 export type FileRecord = PublicFileRecord;
+export type BundleRecord = PublicBundleRecord;
 
 export interface UsageSummary {
 	currentBytes: number;
@@ -26,8 +27,36 @@ export interface PresignResponse {
 	visibility: Visibility;
 }
 
-export function fetchFiles(): Promise<{ files: FileRecord[] }> {
+export function fetchFiles(): Promise<{ files: FileRecord[]; bundles: BundleRecord[] }> {
 	return apiFetch("/app/api/files");
+}
+
+export interface BundleUploadTarget {
+	id: string;
+	filename: string;
+	uploadUrl: string;
+}
+
+export interface CreateBundleResponse {
+	id: string;
+	bundleUrl: string;
+	visibility: Visibility;
+	expiresAt: number;
+	uploads: BundleUploadTarget[];
+}
+
+export function createBundle(req: {
+	name: string;
+	visibility: Visibility;
+	expiresIn: number;
+	password?: string;
+	files: Array<{ filename: string; size: number; contentType: string }>;
+}): Promise<CreateBundleResponse> {
+	return apiFetch("/app/api/bundles", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(req),
+	});
 }
 
 export function fetchUsage(): Promise<UsageSummary> {

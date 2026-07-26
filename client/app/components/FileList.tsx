@@ -3,18 +3,24 @@ import { LayerCard } from "@cloudflare/kumo/components/layer-card";
 import { Table } from "@cloudflare/kumo/components/table";
 import { FileIcon } from "@phosphor-icons/react";
 
-import type { FileRecord, Visibility } from "../lib/api";
+import type { BundleRecord, FileRecord, Visibility } from "../lib/api";
+import { BundleRow } from "./BundleRow";
 import { FileRow } from "./FileRow";
+
+type Patch = { visibility?: Visibility; expiresInSeconds?: number; password?: string };
 
 interface FileListProps {
 	files: FileRecord[] | null;
+	bundles: BundleRecord[] | null;
 	now: number;
 	selectedIds: Set<string>;
 	exitingIds: Set<string>;
 	onToggleOne: (id: string) => void;
 	onToggleAll: () => void;
-	onPatch: (id: string, patch: { visibility?: Visibility; expiresInSeconds?: number; password?: string }) => Promise<void>;
+	onPatch: (id: string, patch: Patch) => Promise<void>;
 	onDeleteRequest: (id: string) => void;
+	onBundlePatch: (id: string, patch: Patch) => Promise<void>;
+	onBundleDeleteRequest: (id: string) => void;
 }
 
 const HEADER_COLUMNS = ["File", "", "Size", "Owner", "Visibility", "Expires", "", ""];
@@ -35,6 +41,7 @@ function SkeletonRows() {
 
 export function FileList({
 	files,
+	bundles,
 	now,
 	selectedIds,
 	exitingIds,
@@ -42,9 +49,12 @@ export function FileList({
 	onToggleAll,
 	onPatch,
 	onDeleteRequest,
+	onBundlePatch,
+	onBundleDeleteRequest,
 }: FileListProps) {
 	const isLoading = files === null;
-	const isEmpty = files !== null && files.length === 0;
+	const bundleList = bundles ?? [];
+	const isEmpty = files !== null && files.length === 0 && bundleList.length === 0;
 	const allSelected = files !== null && files.length > 0 && files.every((f) => selectedIds.has(f.id));
 	const someSelected = files !== null && files.some((f) => selectedIds.has(f.id));
 
@@ -68,6 +78,18 @@ export function FileList({
 					</Table.Header>
 					<Table.Body>
 						{isLoading && <SkeletonRows />}
+						{!isLoading &&
+							bundleList.map((bundle, index) => (
+								<BundleRow
+									key={bundle.id}
+									bundle={bundle}
+									now={now}
+									index={index}
+									exiting={false}
+									onPatch={(patch) => onBundlePatch(bundle.id, patch)}
+									onDeleteRequest={() => onBundleDeleteRequest(bundle.id)}
+								/>
+							))}
 						{!isLoading &&
 							!isEmpty &&
 							(files as FileRecord[]).map((file, index) => (

@@ -1,9 +1,24 @@
-import type { FileRecord, PublicFileRecord, UsageCurrent, UsageMonth, Visibility } from "./types";
+import type {
+	BundleRecord,
+	FileRecord,
+	Gated,
+	PublicBundleRecord,
+	PublicFileRecord,
+	UsageCurrent,
+	UsageMonth,
+	Visibility,
+} from "./types";
 
 /** Strips password fields before a record ever reaches a client (browser or MCP tool). */
 export function toPublicFileRecord(record: FileRecord): PublicFileRecord {
 	const { passwordHash, passwordSalt, ...rest } = record;
 	return { ...rest, hasPassword: Boolean(passwordHash) };
+}
+
+/** Strips password fields and swaps fileIds for the resolved member records. */
+export function toPublicBundleRecord(bundle: BundleRecord, files: FileRecord[]): PublicBundleRecord {
+	const { passwordHash, passwordSalt, fileIds: _fileIds, ...rest } = bundle;
+	return { ...rest, hasPassword: Boolean(passwordHash), files: files.map(toPublicFileRecord) };
 }
 
 const ID_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
@@ -29,6 +44,10 @@ export function clampTtlSeconds(requested: string | undefined, env: Env): number
 
 function fileKey(id: string): string {
 	return `file:${id}`;
+}
+
+function bundleKey(id: string): string {
+	return `bundle:${id}`;
 }
 
 function currentMonthKey(now = Date.now()): string {
@@ -93,7 +112,22 @@ export async function deleteFileRecord(env: Env, id: string): Promise<boolean> {
 	await env.FILES.delete(record.r2Key);
 	await env.METADATA.delete(fileKey(id));
 	await adjustUsageCurrent(env, -record.size, -1);
+	// Keep the parent bundle consistent when a member is deleted on its own (app row,
+	// MCP delete_file). Deleting the last member removes the now-empty bundle too.
+	if (record.bundleId) await detachFromBundle(env, record.bundleId, id);
 	return true;
+}
+
+/** Removes a file id from its bundle's member list; deletes the bundle if it becomes empty. */
+async function detachFromBundle(env: Env, bundleId: string, fileId: string): Promise<void> {
+	const bundle = await getBundle(env, bundleId);
+	if (!bundle) return;
+	const fileIds = bundle.fileIds.filter((fid) => fid !== fileId);
+	if (fileIds.length === 0) {
+		await env.METADATA.delete(bundleKey(bundleId));
+	} else {
+		await putBundle(env, { ...bundle, fileIds });
+	}
 }
 
 export async function deleteExpiredFile(env: Env, id: string): Promise<void> {
@@ -160,6 +194,8 @@ export interface CreateUploadInput {
 	owner: string;
 	passwordHash?: string;
 	passwordSalt?: string;
+	/** Set when this upload is a member of a bundle (gating then defers to the bundle). */
+	bundleId?: string;
 }
 
 // Records the upload optimistically at presign time — the client PUTs the bytes to R2
@@ -180,10 +216,112 @@ export async function createUpload(env: Env, input: CreateUploadInput): Promise<
 		expiresAt: now + input.ttlSeconds * 1000,
 		passwordHash: input.passwordHash,
 		passwordSalt: input.passwordSalt,
+		bundleId: input.bundleId,
 	};
 
 	await putFile(env, record);
 	await adjustUsageCurrent(env, input.size, 1);
 	await addMonthlyUsage(env, input.size);
 	return record;
+}
+
+// ---- Bundles (shareable folders) ---------------------------------------------------------
+
+export async function getBundle(env: Env, id: string): Promise<BundleRecord | null> {
+	const raw = await env.METADATA.get(bundleKey(id));
+	return raw ? (JSON.parse(raw) as BundleRecord) : null;
+}
+
+async function putBundle(env: Env, bundle: BundleRecord): Promise<void> {
+	// Same size-less metadata trick as putFile -- the cron sweep reads expiresAt off the
+	// list entry without deserializing every bundle. Byte accounting stays per-member.
+	await env.METADATA.put(bundleKey(bundle.id), JSON.stringify(bundle), {
+		metadata: { expiresAt: bundle.expiresAt },
+	});
+}
+
+/** Persists a freshly-built bundle record. Members are created (and usage-counted) separately. */
+export async function createBundle(env: Env, bundle: BundleRecord): Promise<BundleRecord> {
+	await putBundle(env, bundle);
+	return bundle;
+}
+
+export async function listBundles(env: Env): Promise<BundleRecord[]> {
+	const records: BundleRecord[] = [];
+	let cursor: string | undefined;
+	do {
+		const page = await env.METADATA.list({ prefix: "bundle:", cursor });
+		const batch = await Promise.all(page.keys.map((k) => env.METADATA.get(k.name)));
+		for (const raw of batch) if (raw) records.push(JSON.parse(raw) as BundleRecord);
+		cursor = page.list_complete ? undefined : page.cursor;
+	} while (cursor);
+	return records.sort((a, b) => b.createdAt - a.createdAt);
+}
+
+/** Resolves the member records of a bundle, dropping any that are missing or already expired. */
+export async function getBundleFiles(env: Env, bundle: BundleRecord, now = Date.now()): Promise<FileRecord[]> {
+	const files = await Promise.all(bundle.fileIds.map((fid) => getFile(env, fid)));
+	return files.filter((f): f is FileRecord => f !== null && f.expiresAt > now);
+}
+
+export async function updateBundleRecord(
+	env: Env,
+	id: string,
+	patch: { visibility?: Visibility; expiresInSeconds?: number; passwordHash?: string; passwordSalt?: string },
+): Promise<BundleRecord | null> {
+	const bundle = await getBundle(env, id);
+	if (!bundle) return null;
+	if (patch.visibility === "public" || patch.visibility === "private" || patch.visibility === "password") {
+		bundle.visibility = patch.visibility;
+		if (patch.visibility !== "password") {
+			bundle.passwordHash = undefined;
+			bundle.passwordSalt = undefined;
+		}
+	}
+	if (patch.passwordHash && patch.passwordSalt) {
+		bundle.passwordHash = patch.passwordHash;
+		bundle.passwordSalt = patch.passwordSalt;
+	}
+	if (typeof patch.expiresInSeconds === "number") {
+		const ttl = Math.min(Math.max(patch.expiresInSeconds, env.MIN_TTL_SECONDS), env.MAX_TTL_SECONDS);
+		bundle.expiresAt = Date.now() + ttl * 1000;
+		// Members share the bundle's lifetime, so the per-file cron sweep removes them in step.
+		for (const fid of bundle.fileIds) {
+			const file = await getFile(env, fid);
+			if (file) await putFile(env, { ...file, expiresAt: bundle.expiresAt });
+		}
+	}
+	await putBundle(env, bundle);
+	return bundle;
+}
+
+export async function deleteBundleRecord(env: Env, id: string): Promise<boolean> {
+	const bundle = await getBundle(env, id);
+	if (!bundle) return false;
+	// Delete the bundle key first so each deleteFileRecord's detachFromBundle is a no-op
+	// (getBundle returns null) rather than rewriting a doomed record on every member.
+	await env.METADATA.delete(bundleKey(id));
+	for (const fid of bundle.fileIds) await deleteFileRecord(env, fid);
+	return true;
+}
+
+export async function deleteExpiredBundle(env: Env, id: string): Promise<void> {
+	const bundle = await getBundle(env, id);
+	await env.METADATA.delete(bundleKey(id));
+	// Members carry the same expiresAt and are swept by the file pass too; deleting here is
+	// idempotent (deleteExpiredFile no-ops on an already-gone record, so usage isn't double-counted).
+	if (bundle) for (const fid of bundle.fileIds) await deleteExpiredFile(env, fid);
+}
+
+/**
+ * Returns whichever record governs access to a file: its parent bundle when the file is
+ * bundled (bundle owns visibility/password), otherwise the file itself. Both structurally
+ * satisfy Gated. If a bundleId dangles (bundle already gone), the file gates on itself.
+ */
+export async function resolveGate(env: Env, file: FileRecord): Promise<Gated> {
+	if (file.bundleId) {
+		const bundle = await getBundle(env, file.bundleId);
+		if (bundle) return bundle;
+	}
+	return file;
 }

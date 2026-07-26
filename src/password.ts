@@ -65,11 +65,17 @@ export async function isUnlocked(request: Request, env: Env, fileId: string): Pr
 	return stored === fileId;
 }
 
-/** Issues a fresh unlock token for this file and returns the Set-Cookie header value. */
-export async function createUnlockCookie(env: Env, fileId: string): Promise<string> {
+/**
+ * Issues a fresh unlock token for this id (a file id, or a bundle id when unlocking a
+ * folder) and returns the Set-Cookie header value.
+ *
+ * Path is "/" rather than the resource's own route: a bundle unlock has to be recognized
+ * both on the bundle page (/f/<id>) and on every member's own page (/d/<memberId>), which
+ * live under different paths. This is safe because the per-id cookie *name* keeps unlocks
+ * from colliding, and the token itself -- not the path -- is the unguessable secret.
+ */
+export async function createUnlockCookie(env: Env, id: string): Promise<string> {
 	const token = crypto.randomUUID();
-	await env.METADATA.put(`unlock:${token}`, fileId, { expirationTtl: UNLOCK_TTL_SECONDS });
-	// Scoped to this file's own routes (/d/<id> and /d/<id>/.../raw both match) so
-	// unlocking one password-protected file never touches another's cookie.
-	return `${unlockCookieName(fileId)}=${token}; Path=/d/${fileId}; HttpOnly; Secure; SameSite=Lax; Max-Age=${UNLOCK_TTL_SECONDS}`;
+	await env.METADATA.put(`unlock:${token}`, id, { expirationTtl: UNLOCK_TTL_SECONDS });
+	return `${unlockCookieName(id)}=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${UNLOCK_TTL_SECONDS}`;
 }

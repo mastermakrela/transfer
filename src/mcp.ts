@@ -1,9 +1,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { McpAgent } from "agents/mcp";
 import { z } from "zod";
-import { deleteFileRecord, getFile, getUsageSummary, listFiles, updateFileRecord } from "./kv";
+import { deleteBundleRecord, deleteFileRecord, getFile, getUsageSummary, listFiles, updateFileRecord } from "./kv";
 import { hashPassword } from "./password";
-import { downloadUrl, requestUpload } from "./uploads";
+import { bundleUrl, downloadUrl, requestBundleUpload, requestUpload } from "./uploads";
 
 export interface AuthProps extends Record<string, unknown> {
 	email: string;
@@ -27,9 +27,13 @@ Share a local file (build artifact, log, export) with a human via a link.
 
 Files auto-delete after 7 days by default; pass \`expires_in_seconds\` (5 minutes to 30 days) to change retention.
 
+## Sharing several files under one link (bundles)
+
+When you have multiple files to hand over as a set (e.g. four Android builds for one client), use \`create_bundle\` instead of uploading each separately. It takes a folder \`name\` and a \`files\` array and returns ONE \`bundle_url\` (a /f/... folder page listing every file, with a "Download all" zip) plus one \`upload_url\` per file. Visibility/password/expiry are set once on the whole folder. Upload each file with its own \`curl -T <file> "<upload_url>"\`, then relay the single \`bundle_url\`.
+
 ## Managing files
 
-\`list_files\`, \`update_file\` (visibility/password/expiry), \`delete_file\`, and \`get_usage\` (storage + monthly budget) are available to every authenticated team member.
+\`list_files\`, \`update_file\` (visibility/password/expiry), \`delete_file\`, \`delete_bundle\`, and \`get_usage\` (storage + monthly budget) are available to every authenticated team member.
 
 ## If the curl PUT is blocked
 
@@ -132,8 +136,63 @@ export class TransferMCP extends McpAgent<Env, unknown, AuthProps> {
 						created_at: new Date(f.createdAt).toISOString(),
 						expires_at: new Date(f.expiresAt).toISOString(),
 						download_url: downloadUrl(this.auth.origin, f),
+						bundle_id: f.bundleId ?? null,
 					})),
 				);
+			},
+		);
+
+		this.server.registerTool(
+			"create_bundle",
+			{
+				title: "Share several files under one link",
+				description:
+					"Group multiple files into one shareable folder (a bundle) with a single link. Returns bundle_url (the /f/... folder page, list to the user) and one upload_url per file — PUT each file's bytes with `curl -T <file> \"<upload_url>\"` (valid 1 hour, exact declared size). Visibility/password/expiry apply to the whole folder. Prefer this over multiple upload_file calls when handing over a set of related files.",
+				inputSchema: {
+					name: z.string().min(1).describe("Folder name shown on the bundle page, e.g. \"Acme Android builds\""),
+					files: z
+						.array(
+							z.object({
+								filename: z.string().min(1),
+								size_bytes: z.number().int().positive().describe("Exact size in bytes (e.g. from `stat -f%z`)"),
+								content_type: z.string().optional(),
+							}),
+						)
+						.min(1)
+						.describe("The files to include; each gets its own upload_url in the response"),
+					visibility: z
+						.enum(["public", "password", "private"])
+						.optional()
+						.describe("private (default) = team members only; password = anyone with the password; public = anyone with the link"),
+					password: z.string().min(1).optional().describe('Required when visibility is "password"'),
+					expires_in_seconds: z
+						.number()
+						.int()
+						.optional()
+						.describe("Auto-delete the whole folder after this many seconds (300–2592000); default 604800 (7 days)"),
+				},
+			},
+			async ({ name, files, visibility, password, expires_in_seconds }) => {
+				const result = await requestBundleUpload(this.env, {
+					name,
+					visibility,
+					password,
+					expiresIn: expires_in_seconds,
+					owner: this.auth.email,
+					files: files.map((f) => ({ filename: f.filename, size: f.size_bytes, contentType: f.content_type })),
+				});
+				if (!result.ok) return error(result.error);
+				return json({
+					bundle_url: bundleUrl(this.auth.origin, result.bundle),
+					id: result.bundle.id,
+					visibility: result.bundle.visibility,
+					expires_at: new Date(result.bundle.expiresAt).toISOString(),
+					uploads: result.uploads.map((u) => ({
+						filename: u.record.filename,
+						upload_url: u.uploadUrl,
+						next_step: `curl -T "${u.record.filename}" "${u.uploadUrl}"`,
+					})),
+				});
 			},
 		);
 
@@ -187,6 +246,20 @@ export class TransferMCP extends McpAgent<Env, unknown, AuthProps> {
 			async ({ id }) => {
 				const deleted = await deleteFileRecord(this.env, id);
 				if (!deleted) return error(`no file with id ${id}`);
+				return json({ deleted: id });
+			},
+		);
+
+		this.server.registerTool(
+			"delete_bundle",
+			{
+				title: "Delete a bundle",
+				description: "Immediately delete a shared folder, its link, and every file inside it.",
+				inputSchema: { id: z.string().describe("Bundle id (from create_bundle, or a file's bundle_id in list_files)") },
+			},
+			async ({ id }) => {
+				const deleted = await deleteBundleRecord(this.env, id);
+				if (!deleted) return error(`no bundle with id ${id}`);
 				return json({ deleted: id });
 			},
 		);

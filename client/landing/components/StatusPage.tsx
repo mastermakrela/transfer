@@ -42,13 +42,9 @@ export function StatusPage({ data }: { data: StatusData }) {
 					<Empty
 						icon={<KeyIcon size={40} className="text-kumo-inactive" />}
 						title="Password required"
-						description={`“${data.filename}” is protected by a password.`}
+						description={`“${data.title}” is protected by a password.`}
 						contents={
-							<form
-								method="POST"
-								action={`/d/${data.id}/${encodeURIComponent(data.filename)}/unlock`}
-								className="flex w-full flex-col gap-3"
-							>
+							<form method="POST" action={data.unlockAction} className="flex w-full flex-col gap-3">
 								<Input
 									type="password"
 									name="password"

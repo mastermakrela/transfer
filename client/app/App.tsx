@@ -12,10 +12,13 @@ import { UsageBar } from "./components/UsageBar";
 import {
 	ApiError,
 	AuthError,
+	deleteBundle,
 	deleteFile,
 	fetchFiles,
 	fetchUsage,
+	patchBundle,
 	patchFile,
+	type BundleRecord,
 	type FileRecord,
 	type UsageSummary,
 	type Visibility,
@@ -36,6 +39,7 @@ export function App() {
 
 function AppShell() {
 	const [files, setFiles] = useState<FileRecord[] | null>(null);
+	const [bundles, setBundles] = useState<BundleRecord[] | null>(null);
 	const [usage, setUsage] = useState<UsageSummary | null>(null);
 	const [authError, setAuthError] = useState(false);
 	const [loadError, setLoadError] = useState<string | null>(null);
@@ -43,6 +47,8 @@ function AppShell() {
 	const [exitingIds, setExitingIds] = useState<Set<string>>(new Set());
 	const [pendingDeleteIds, setPendingDeleteIds] = useState<string[] | null>(null);
 	const [deleteBusy, setDeleteBusy] = useState(false);
+	const [pendingDeleteBundleId, setPendingDeleteBundleId] = useState<string | null>(null);
+	const [bundleDeleteBusy, setBundleDeleteBusy] = useState(false);
 	const [now, setNow] = useState(() => Date.now());
 	const toasts = useKumoToastManager();
 
@@ -57,6 +63,7 @@ function AppShell() {
 			const [filesRes, usageRes] = await Promise.all([fetchFiles(), fetchUsage()]);
 			setAuthError(false);
 			setFiles(filesRes.files);
+			setBundles(filesRes.bundles);
 			setUsage(usageRes);
 		} catch (err) {
 			if (err instanceof AuthError) {
@@ -86,8 +93,9 @@ function AppShell() {
 
 	const refetchFiles = useCallback(async () => {
 		try {
-			const { files: next } = await fetchFiles();
+			const { files: next, bundles: nextBundles } = await fetchFiles();
 			setFiles(next);
+			setBundles(nextBundles);
 		} catch (err) {
 			if (err instanceof AuthError) setAuthError(true);
 		}
@@ -114,6 +122,45 @@ function AppShell() {
 		},
 		[toasts],
 	);
+
+	const handleBundlePatch = useCallback(
+		async (id: string, patch: { visibility?: Visibility; expiresInSeconds?: number; password?: string }) => {
+			try {
+				const updated = await patchBundle(id, patch);
+				// PATCH returns the bundle without its members resolved; keep the existing files array.
+				setBundles((prev) => prev?.map((b) => (b.id === id ? { ...updated, files: b.files } : b)) ?? prev);
+			} catch (err) {
+				if (err instanceof AuthError) {
+					setAuthError(true);
+				} else {
+					const message = err instanceof ApiError ? err.message : "update failed";
+					toasts.add({ variant: "error", title: "Couldn't update folder", description: message });
+				}
+			}
+		},
+		[toasts],
+	);
+
+	const handleConfirmDeleteBundle = useCallback(async () => {
+		if (!pendingDeleteBundleId) return;
+		setBundleDeleteBusy(true);
+		try {
+			await deleteBundle(pendingDeleteBundleId);
+			setBundles((prev) => prev?.filter((b) => b.id !== pendingDeleteBundleId) ?? prev);
+			void refetchUsage();
+			toasts.add({ variant: "success", title: "Folder deleted" });
+		} catch (err) {
+			if (err instanceof AuthError) {
+				setAuthError(true);
+			} else {
+				const message = err instanceof ApiError ? err.message : "delete failed";
+				toasts.add({ variant: "error", title: "Couldn't delete folder", description: message });
+			}
+		} finally {
+			setBundleDeleteBusy(false);
+			setPendingDeleteBundleId(null);
+		}
+	}, [pendingDeleteBundleId, refetchUsage, toasts]);
 
 	const handleToggleOne = useCallback((id: string) => {
 		setSelectedIds((prev) => {
@@ -193,6 +240,10 @@ function AppShell() {
 	}, [pendingDeleteIds, refetchUsage, toasts]);
 
 	const selectedCount = selectedIds.size;
+	const pendingDeleteBundleName = useMemo(() => {
+		if (!pendingDeleteBundleId) return null;
+		return [bundles?.find((b) => b.id === pendingDeleteBundleId)?.name ?? pendingDeleteBundleId];
+	}, [pendingDeleteBundleId, bundles]);
 
 	return (
 		<main className="app-shell">
@@ -218,6 +269,7 @@ function AppShell() {
 					/>
 					<FileList
 						files={files}
+						bundles={bundles}
 						now={now}
 						selectedIds={selectedIds}
 						exitingIds={exitingIds}
@@ -225,6 +277,8 @@ function AppShell() {
 						onToggleAll={handleToggleAll}
 						onPatch={handlePatch}
 						onDeleteRequest={(id) => setPendingDeleteIds([id])}
+						onBundlePatch={handleBundlePatch}
+						onBundleDeleteRequest={(id) => setPendingDeleteBundleId(id)}
 					/>
 				</>
 			)}
@@ -234,6 +288,13 @@ function AppShell() {
 				busy={deleteBusy}
 				onCancel={() => setPendingDeleteIds(null)}
 				onConfirm={handleConfirmDelete}
+			/>
+			<ConfirmDeleteDialog
+				pending={pendingDeleteBundleName}
+				busy={bundleDeleteBusy}
+				noun="folder"
+				onCancel={() => setPendingDeleteBundleId(null)}
+				onConfirm={handleConfirmDeleteBundle}
 			/>
 		</main>
 	);

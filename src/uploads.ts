@@ -1,7 +1,7 @@
-import { checkQuota, clampTtlSeconds, createUpload, sanitizeFilename } from "./kv";
+import { checkQuota, clampTtlSeconds, createBundle, createUpload, generateId, sanitizeFilename } from "./kv";
 import { hashPassword } from "./password";
 import { presignUploadUrl } from "./presign";
-import type { FileRecord, Visibility } from "./types";
+import type { BundleRecord, FileRecord, Visibility } from "./types";
 
 export interface UploadRequest {
 	filename: string;
@@ -63,4 +63,96 @@ export async function requestUpload(env: Env, req: UploadRequest): Promise<Uploa
 
 export function downloadUrl(origin: string, record: FileRecord): string {
 	return `${origin}/d/${record.id}/${record.filename}`;
+}
+
+export interface BundleFileRequest {
+	filename: string;
+	size: number;
+	contentType?: string;
+}
+
+export interface BundleUploadRequest {
+	name: string;
+	visibility?: string;
+	expiresIn?: string | number;
+	owner: string;
+	password?: string;
+	files: BundleFileRequest[];
+}
+
+export type BundleUploadResult =
+	| { ok: true; bundle: BundleRecord; uploads: Array<{ record: FileRecord; uploadUrl: string }> }
+	| { ok: false; error: string };
+
+/**
+ * Creates a bundle plus one member FileRecord per file, and presigns a PUT for each.
+ * The bundle owns visibility/password/expiry; members inherit it and carry bundleId, so
+ * their own visibility field is cosmetic (access is resolved through the bundle). Byte
+ * accounting stays per-member via createUpload, so nothing about usage/quota changes.
+ */
+export async function requestBundleUpload(env: Env, req: BundleUploadRequest): Promise<BundleUploadResult> {
+	const name = req.name.trim();
+	if (!name) return { ok: false, error: "bundle name is required" };
+	if (!Array.isArray(req.files) || req.files.length === 0) {
+		return { ok: false, error: "a bundle needs at least one file" };
+	}
+	for (const f of req.files) {
+		if (!f.filename) return { ok: false, error: "every file needs a filename" };
+		if (!Number.isInteger(f.size) || f.size <= 0) return { ok: false, error: `size for ${f.filename} must be a positive integer (bytes)` };
+		if (f.size > MAX_UPLOAD_BYTES) return { ok: false, error: `${f.filename} exceeds the 5GB single-upload limit` };
+	}
+
+	const totalSize = req.files.reduce((sum, f) => sum + f.size, 0);
+	const quota = await checkQuota(env, totalSize);
+	if (!quota.ok) {
+		return {
+			ok: false,
+			error: `monthly upload budget exceeded (${quota.usedGB.toFixed(2)}GB / ${quota.budgetGB}GB used)`,
+		};
+	}
+
+	const visibility = normalizeVisibility(req.visibility);
+	if (visibility === "password" && !req.password) {
+		return { ok: false, error: "password is required for password-protected folders" };
+	}
+	const hashed = visibility === "password" && req.password ? await hashPassword(req.password) : undefined;
+
+	const bundleId = generateId();
+	const ttlSeconds = clampTtlSeconds(req.expiresIn === undefined ? undefined : String(req.expiresIn), env);
+
+	const uploads: Array<{ record: FileRecord; uploadUrl: string }> = [];
+	for (const f of req.files) {
+		// Members mirror the bundle's visibility for display only -- resolveGate routes all
+		// real access checks through the bundle. Passwords live on the bundle, not members.
+		const record = await createUpload(env, {
+			filename: sanitizeFilename(f.filename),
+			contentType: f.contentType || "application/octet-stream",
+			size: f.size,
+			visibility,
+			ttlSeconds,
+			owner: req.owner,
+			bundleId,
+		});
+		const uploadUrl = await presignUploadUrl(env, record.r2Key, record.size);
+		uploads.push({ record, uploadUrl });
+	}
+
+	const now = Date.now();
+	const bundle = await createBundle(env, {
+		id: bundleId,
+		name,
+		fileIds: uploads.map((u) => u.record.id),
+		visibility,
+		owner: req.owner,
+		createdAt: now,
+		expiresAt: now + ttlSeconds * 1000,
+		passwordHash: hashed?.hash,
+		passwordSalt: hashed?.salt,
+	});
+
+	return { ok: true, bundle, uploads };
+}
+
+export function bundleUrl(origin: string, bundle: BundleRecord): string {
+	return `${origin}/f/${bundle.id}`;
 }
