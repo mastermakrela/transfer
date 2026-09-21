@@ -54,6 +54,45 @@ export type PublicBundleRecord = Omit<BundleRecord, "passwordHash" | "passwordSa
 	files: PublicFileRecord[];
 };
 
+/** What a visitor did with a link. "zip" is a whole-bundle download via /f/:id/all.zip. */
+export type AccessKind = "view" | "download" | "zip";
+
+/**
+ * One recorded access to a link.
+ *
+ * Deliberately limited to request context Cloudflare already derives for every request
+ * and hands the Worker for free (request.cf.country/city, Referer, User-Agent), and
+ * reduced further before it is written: no IP address, no raw User-Agent string, no
+ * cookie, no session id, nothing else that would single out a returning visitor. The
+ * Referer keeps only its hostname -- paths routinely carry tokens and search terms.
+ */
+export interface AccessEvent {
+	/** Unix ms. */
+	t: number;
+	kind: AccessKind;
+	/** ISO-3166-1 alpha-2 from request.cf.country; omitted when Cloudflare can't tell. */
+	country?: string;
+	city?: string;
+	/** Hostname of the Referer, and only for off-site referrers (see src/telemetry.ts). */
+	referer?: string;
+	/** Coarse browser+OS family parsed from the UA, e.g. "Firefox / macOS". */
+	client?: string;
+}
+
+/** The counters half of AccessStats -- also mirrored into the KV entry's metadata. */
+export interface AccessSummary {
+	views: number;
+	downloads: number;
+	/** Unix ms of the most recent access of any kind; 0 when there has been none. */
+	lastAt: number;
+}
+
+/** Access history for one file or bundle, stored under `hits:<id>` in METADATA. */
+export interface AccessSummaryWithEvents extends AccessSummary {
+	/** Most recent events, newest first, capped at RECENT_LIMIT in src/telemetry.ts. */
+	recent: AccessEvent[];
+}
+
 export interface UsageCurrent {
 	bytes: number;
 	count: number;

@@ -10,18 +10,33 @@ import { EXPIRY_OPTIONS } from "../../shared/expiry-options";
 import { formatBytes, formatRelativeTime } from "../../shared/format";
 import { SetPasswordDialog } from "../../shared/SetPasswordDialog";
 import { useCopyFeedback } from "../../shared/useCopyFeedback";
-import type { BundleRecord, Visibility } from "../lib/api";
+import type { AccessSummary, BundleRecord, Visibility } from "../lib/api";
+import { AccessCell } from "./AccessCell";
 
 interface BundleRowProps {
 	bundle: BundleRecord;
 	now: number;
 	index: number;
 	exiting: boolean;
+	/** Whether the hidden telemetry mode is on -- adds the views/downloads cell. */
+	telemetry: boolean;
+	access: AccessSummary | undefined;
 	onPatch: (patch: { visibility?: Visibility; expiresInSeconds?: number; password?: string }) => Promise<void>;
 	onDeleteRequest: () => void;
+	onOpenLog: () => void;
 }
 
-export function BundleRow({ bundle, now, index, exiting, onPatch, onDeleteRequest }: BundleRowProps) {
+export function BundleRow({
+	bundle,
+	now,
+	index,
+	exiting,
+	telemetry,
+	access,
+	onPatch,
+	onDeleteRequest,
+	onOpenLog,
+}: BundleRowProps) {
 	const [savingField, setSavingField] = useState<"visibility" | "expiry" | null>(null);
 	const [passwordDialogMode, setPasswordDialogMode] = useState<"set" | "rotate" | null>(null);
 	const [passwordBusy, setPasswordBusy] = useState(false);
@@ -107,6 +122,7 @@ export function BundleRow({ bundle, now, index, exiting, onPatch, onDeleteReques
 						</Text>
 					</div>
 				</Table.Cell>
+				{telemetry && <AccessCell access={access} name={bundle.name} onOpenLog={onOpenLog} />}
 				<Table.Cell>
 					<div className="visibility-cell">
 						<Select

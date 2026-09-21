@@ -1,3 +1,4 @@
+import { deleteAccessStats } from "./telemetry";
 import type {
 	BundleRecord,
 	FileRecord,
@@ -49,6 +50,9 @@ function fileKey(id: string): string {
 function bundleKey(id: string): string {
 	return `bundle:${id}`;
 }
+
+// The third key namespace, `hits:<id>`, belongs to src/telemetry.ts. Every delete path
+// below tears it down alongside the record so an id can't be reused onto stale history.
 
 function currentMonthKey(now = Date.now()): string {
 	const d = new Date(now);
@@ -111,6 +115,7 @@ export async function deleteFileRecord(env: Env, id: string): Promise<boolean> {
 	if (!record) return false;
 	await env.FILES.delete(record.r2Key);
 	await env.METADATA.delete(fileKey(id));
+	await deleteAccessStats(env, id);
 	await adjustUsageCurrent(env, -record.size, -1);
 	// Keep the parent bundle consistent when a member is deleted on its own (app row,
 	// MCP delete_file). Deleting the last member removes the now-empty bundle too.
@@ -137,6 +142,7 @@ export async function deleteExpiredFile(env: Env, id: string): Promise<void> {
 		await adjustUsageCurrent(env, -record.size, -1);
 	}
 	await env.METADATA.delete(fileKey(id));
+	await deleteAccessStats(env, id);
 }
 
 export async function adjustUsageCurrent(env: Env, deltaBytes: number, deltaCount: number): Promise<void> {
@@ -301,6 +307,7 @@ export async function deleteBundleRecord(env: Env, id: string): Promise<boolean>
 	// Delete the bundle key first so each deleteFileRecord's detachFromBundle is a no-op
 	// (getBundle returns null) rather than rewriting a doomed record on every member.
 	await env.METADATA.delete(bundleKey(id));
+	await deleteAccessStats(env, id);
 	for (const fid of bundle.fileIds) await deleteFileRecord(env, fid);
 	return true;
 }
@@ -308,6 +315,7 @@ export async function deleteBundleRecord(env: Env, id: string): Promise<boolean>
 export async function deleteExpiredBundle(env: Env, id: string): Promise<void> {
 	const bundle = await getBundle(env, id);
 	await env.METADATA.delete(bundleKey(id));
+	await deleteAccessStats(env, id);
 	// Members carry the same expiresAt and are swept by the file pass too; deleting here is
 	// idempotent (deleteExpiredFile no-ops on an already-gone record, so usage isn't double-counted).
 	if (bundle) for (const fid of bundle.fileIds) await deleteExpiredFile(env, fid);

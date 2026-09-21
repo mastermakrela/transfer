@@ -4,9 +4,22 @@ import QRCode from "qrcode";
 import { verifyAccessSession } from "../access";
 import { getBundle, getBundleFiles, getFile, resolveGate } from "../kv";
 import { createUnlockCookie, isUnlocked, verifyPassword } from "../password";
-import type { FileRecord, Gated } from "../types";
+import { recordAccess } from "../telemetry";
+import type { AccessKind, FileRecord, Gated } from "../types";
 
 const download = new Hono<{ Bindings: Env }>();
+
+/**
+ * Records an access without holding up the response. Passing more than one id rolls the
+ * event up to a parent bundle as well as the member that was actually hit, so a folder
+ * row shows all the activity happening under its link, not just hits on the folder page.
+ * Only ever called after the access gate has passed -- a 401 is not an access.
+ */
+function track(c: Context<{ Bindings: Env }>, ids: Array<string | undefined>, kind: AccessKind): void {
+	for (const id of ids) {
+		if (id) c.executionCtx.waitUntil(recordAccess(c.env, id, kind, c.req.raw));
+	}
+}
 
 // Shared access gate for byte-serving routes (member /raw and bundle /all.zip). `gate` is
 // whichever record governs access -- the file itself, or its parent bundle. Returns a 401
@@ -39,6 +52,13 @@ download.get("/d/:id/:filename/raw", async (c) => {
 	if (!object) return c.text("file missing from storage\n", 404);
 
 	const wantsDownload = c.req.query("download") === "1";
+	// ?download=1 is the Download button. A bare /raw hit is either the landing page's own
+	// <img>/<video> subresource -- already counted as the page view, and flagged by
+	// Sec-Fetch-Site: same-origin, which every current browser sends -- or someone pulling
+	// the bytes directly with curl or a hotlink, which is a download in all but name.
+	if (wantsDownload || c.req.header("sec-fetch-site") !== "same-origin") {
+		track(c, [record.id, record.bundleId], "download");
+	}
 	const safeFilename = record.filename.replace(/"/g, "");
 	const headers = new Headers();
 	object.writeHttpMetadata(headers);
@@ -90,6 +110,8 @@ download.get("/d/:id/:filename", async (c) => {
 			401,
 		);
 	}
+
+	track(c, [record.id, record.bundleId], "view");
 
 	const pageUrl = c.req.url;
 	const qrSvg = await QRCode.toString(pageUrl, { type: "svg", margin: 1 });
@@ -203,6 +225,8 @@ download.get("/f/:id", async (c) => {
 		);
 	}
 
+	track(c, [bundle.id], "view");
+
 	const files = await getBundleFiles(c.env, bundle);
 	const pageUrl = c.req.url;
 	const qrSvg = await QRCode.toString(pageUrl, { type: "svg", margin: 1 });
@@ -294,6 +318,8 @@ download.get("/f/:id/all.zip", async (c) => {
 		if (object) entries.push({ name: f.filename, input: object.body, size: object.size, lastModified: new Date(f.createdAt) });
 	}
 	if (entries.length === 0) return c.text("this folder has no downloadable files\n", 404);
+
+	track(c, [bundle.id], "zip");
 
 	const zipName = (bundle.name.replace(/[^A-Za-z0-9._ -]/g, "_").trim() || "bundle").slice(0, 100);
 	const headers = new Headers({

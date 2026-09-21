@@ -14,6 +14,7 @@ import {
 	updateFileRecord,
 } from "../kv";
 import { hashPassword } from "../password";
+import { getAccessStats, listAccessSummaries } from "../telemetry";
 import { bundleUrl, downloadUrl, requestBundleUpload, requestUpload } from "../uploads";
 
 const app = new Hono<{ Bindings: Env; Variables: { accessEmail: string } }>();
@@ -185,6 +186,22 @@ app.delete("/app/api/files/:id", async (c) => {
 
 app.get("/app/api/usage", async (c) => {
 	return c.json(await getUsageSummary(c.env));
+});
+
+// Access tracking (see src/telemetry.ts). Both routes sit under /app/api/* and are
+// therefore behind Cloudflare Access like everything else here -- who opened a link is
+// only ever visible to a signed-in account member, never on the link's own public page.
+
+// Counters for every tracked link at once, so the file table can label all its rows
+// from a single request when telemetry mode is switched on.
+app.get("/app/api/access", async (c) => {
+	return c.json(await listAccessSummaries(c.env));
+});
+
+// The individual events behind one link's counters. Unknown ids return zeroed stats
+// rather than 404 -- a file nobody has opened yet simply has no `hits:` key.
+app.get("/app/api/access/:id", async (c) => {
+	return c.json(await getAccessStats(c.env, c.req.param("id")));
 });
 
 export default app;

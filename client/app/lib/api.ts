@@ -63,6 +63,40 @@ export function fetchUsage(): Promise<UsageSummary> {
 	return apiFetch("/app/api/usage");
 }
 
+/**
+ * Access tracking -- mirrors AccessEvent/AccessSummary in src/types.ts. Only reachable
+ * behind Cloudflare Access, and only surfaced by the hidden telemetry mode in App.tsx.
+ */
+export type AccessKind = "view" | "download" | "zip";
+
+export interface AccessEvent {
+	t: number;
+	kind: AccessKind;
+	country?: string;
+	city?: string;
+	referer?: string;
+	client?: string;
+}
+
+export interface AccessSummary {
+	views: number;
+	downloads: number;
+	lastAt: number;
+}
+
+export interface AccessStats extends AccessSummary {
+	recent: AccessEvent[];
+}
+
+/** Counters for every tracked link, keyed by file/bundle id. */
+export function fetchAccessSummaries(): Promise<Record<string, AccessSummary>> {
+	return apiFetch("/app/api/access");
+}
+
+export function fetchAccessStats(id: string): Promise<AccessStats> {
+	return apiFetch(`/app/api/access/${id}`);
+}
+
 export function presignUpload(req: {
 	filename: string;
 	size: number;

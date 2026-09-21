@@ -30,6 +30,18 @@ MCP tool access and the `/app` file manager are gated by a Cloudflare Access "Se
 
 R2 bucket jurisdiction is set via `R2_JURISDICTION` in `wrangler.jsonc` (defaults to `eu` — change or drop it to match wherever you create the bucket); presigned URLs are built from `ACCOUNT_ID` + `R2_BUCKET_NAME` + `R2_JURISDICTION`. If the bucket is EU-jurisdiction, `wrangler r2` commands against it need `--jurisdiction eu`. Bucket CORS (`r2-cors.json`) must allow `PUT` from your deployed Worker's origin for direct browser uploads.
 
+## Access tracking ("who opened this")
+
+Every share link records when it was opened, in `src/telemetry.ts`. It is off the UI by default and deliberately narrow.
+
+**What's stored** — one `hits:<id>` KV entry per file/bundle, holding view/download counters plus the last 50 events. Each event is a timestamp, the kind (`view` / `download` / `zip`), the country and city Cloudflare already derives for the request, the *hostname* of an off-site `Referer`, and a coarse browser+OS family (`Firefox / macOS`) parsed from the User-Agent.
+
+**What isn't** — no IP address, no raw User-Agent string, no cookie, pixel, or visitor id of any kind. Nothing is set on the visitor, so two visits by one person are indistinguishable from two people, and no event can be tied back to an individual. Referers keep only the host (paths carry tokens and search terms), and self-referers are dropped entirely. The whole `hits:` entry is deleted along with the file — by manual delete and by the expiry cron alike.
+
+**Where to see it** — nowhere, until you ask for it. On `/app`, type the Konami code (<kbd>↑</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd><kbd>←</kbd><kbd>→</kbd><kbd>B</kbd><kbd>A</kbd>) to toggle **telemetry mode**: the table grows an "Opens" column, and clicking a row's counters opens its event log. The same code hides it again; nothing is persisted, so a reload is back to normal. Tracking runs server-side either way — the code only decides whether the numbers are on screen, since "has anyone opened this yet" is a question worth asking a few times a year and not worth turning every file list into a dashboard.
+
+Counters are readable only through `/app/api/access` and `/app/api/access/:id`, both behind Cloudflare Access — a link's own public landing page never reveals who else has opened it. A page view is counted on the landing page; `/raw` counts as a download unless it arrives as a same-origin subresource (the page's own `<img>`/`<video>`, already counted as the view). Hits on a bundled file roll up to its folder as well, so a folder row shows everything happening under its link. Writes are a read-modify-write on one KV key issued through `waitUntil`, so simultaneous hits can drop an event; that's accepted — this is a signal, not billing.
+
 ## Agent permission friction
 
 The upload flow is: agent calls `upload_file` to mint a presigned URL, then runs `curl -T <file> "<upload_url>"` to actually PUT the bytes. Some agent runtimes with strict tool-permission auto-approval (e.g. Claude Code's auto mode) flag that `curl` as a possible data-exfiltration pattern — "local file → external host → publicly-reachable link" — and hard-block it, even though the URL points at your own bucket. There's no way to route around this from inside the agent; it has to be granted in your permission config, and neither option below is a hard security boundary, just a tradeoff:

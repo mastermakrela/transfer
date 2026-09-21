@@ -5,7 +5,8 @@ import { Button } from "@cloudflare/kumo/components/button";
 import { CheckIcon, CopySimpleIcon, KeyIcon, TrashIcon } from "@phosphor-icons/react";
 import { useState, type CSSProperties } from "react";
 
-import type { FileRecord, Visibility } from "../lib/api";
+import type { AccessSummary, FileRecord, Visibility } from "../lib/api";
+import { AccessCell } from "./AccessCell";
 import { ExpiryInfo } from "../../shared/ExpiryInfo";
 import { EXPIRY_OPTIONS } from "../../shared/expiry-options";
 import { formatBytes, formatRelativeTime } from "../../shared/format";
@@ -20,12 +21,28 @@ interface FileRowProps {
 	index: number;
 	/** True while the row is playing its exit animation, just before being spliced out. */
 	exiting: boolean;
+	/** Whether the hidden telemetry mode is on -- adds the views/downloads cell. */
+	telemetry: boolean;
+	access: AccessSummary | undefined;
 	onToggle: () => void;
 	onPatch: (patch: { visibility?: Visibility; expiresInSeconds?: number; password?: string }) => Promise<void>;
 	onDeleteRequest: () => void;
+	onOpenLog: () => void;
 }
 
-export function FileRow({ file, now, selected, index, exiting, onToggle, onPatch, onDeleteRequest }: FileRowProps) {
+export function FileRow({
+	file,
+	now,
+	selected,
+	index,
+	exiting,
+	telemetry,
+	access,
+	onToggle,
+	onPatch,
+	onDeleteRequest,
+	onOpenLog,
+}: FileRowProps) {
 	const [savingField, setSavingField] = useState<"visibility" | "expiry" | null>(null);
 	const [passwordDialogMode, setPasswordDialogMode] = useState<"set" | "rotate" | null>(null);
 	const [passwordBusy, setPasswordBusy] = useState(false);
@@ -108,6 +125,7 @@ export function FileRow({ file, now, selected, index, exiting, onToggle, onPatch
 						</Text>
 					</div>
 				</Table.Cell>
+				{telemetry && <AccessCell access={access} name={file.filename} onOpenLog={onOpenLog} />}
 				<Table.Cell>
 					<div className="visibility-cell">
 						<Select

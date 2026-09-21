@@ -38,6 +38,20 @@ export function formatRelativeTime(timestampMs: number, now = Date.now()): strin
 	return relativeFormatter.format(Math.round(diff / (1000 * 60)), "minute");
 }
 
+/**
+ * "3 hours ago", "2 days ago". The past-facing counterpart to formatRelativeTime, which
+ * only speaks about expiry and collapses everything already elapsed into "expired".
+ */
+export function formatTimeAgo(timestampMs: number, now = Date.now()): string {
+	const diff = timestampMs - now;
+	for (const [unit, unitMs] of RELATIVE_UNITS) {
+		if (Math.abs(diff) >= unitMs) {
+			return relativeFormatter.format(Math.round(diff / unitMs), unit);
+		}
+	}
+	return relativeFormatter.format(Math.round(diff / 1000), "second");
+}
+
 export function formatAbsoluteTime(timestampMs: number): string {
 	return new Date(timestampMs).toLocaleString(undefined, {
 		dateStyle: "medium",

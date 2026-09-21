@@ -2,6 +2,7 @@ import { Text } from "@cloudflare/kumo/components/text";
 import { Toasty, useKumoToastManager } from "@cloudflare/kumo/components/toast";
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 
+import { AccessLogDialog } from "./components/AccessLogDialog";
 import { BulkActionsBar } from "./components/BulkActionsBar";
 import { ConfirmDeleteDialog } from "./components/ConfirmDeleteDialog";
 import { ErrorState } from "./components/ErrorState";
@@ -14,15 +15,18 @@ import {
 	AuthError,
 	deleteBundle,
 	deleteFile,
+	fetchAccessSummaries,
 	fetchFiles,
 	fetchUsage,
 	patchBundle,
 	patchFile,
+	type AccessSummary,
 	type BundleRecord,
 	type FileRecord,
 	type UsageSummary,
 	type Visibility,
 } from "./lib/api";
+import { useKonamiCode } from "./lib/useKonamiCode";
 
 const NOW_TICK_MS = 45_000;
 // How long a deleted row plays its exit animation before actually being
@@ -50,6 +54,10 @@ function AppShell() {
 	const [pendingDeleteBundleId, setPendingDeleteBundleId] = useState<string | null>(null);
 	const [bundleDeleteBusy, setBundleDeleteBusy] = useState(false);
 	const [now, setNow] = useState(() => Date.now());
+	// Hidden "telemetry mode" -- off on every load, never persisted. See useKonamiCode below.
+	const [telemetry, setTelemetry] = useState(false);
+	const [accessById, setAccessById] = useState<Record<string, AccessSummary>>({});
+	const [logTarget, setLogTarget] = useState<{ id: string; name: string } | null>(null);
 	const toasts = useKumoToastManager();
 
 	useEffect(() => {
@@ -100,6 +108,42 @@ function AppShell() {
 			if (err instanceof AuthError) setAuthError(true);
 		}
 	}, []);
+
+	// ↑↑↓↓←→←→BA. Access tracking runs server-side regardless of this switch -- all it
+	// decides is whether the numbers are on screen. Keeping them off by default is the
+	// whole point: the everyday view of /app should be about files, not about analytics,
+	// and "has anyone opened this yet" is a question you ask a handful of times a year.
+	const toggleTelemetry = useCallback(() => {
+		const next = !telemetry;
+		setTelemetry(next);
+		if (!next) setLogTarget(null);
+		toasts.add(
+			next
+				? {
+						title: "Telemetry mode",
+						description: "Every row now shows how often its link was opened. Same code again to hide it.",
+					}
+				: { title: "Telemetry mode off" },
+		);
+	}, [telemetry, toasts]);
+	useKonamiCode(toggleTelemetry);
+
+	// Counters for the whole table in one request, fetched only once the mode is on so
+	// an ordinary page load never asks for them.
+	useEffect(() => {
+		if (!telemetry) return;
+		let cancelled = false;
+		fetchAccessSummaries()
+			.then((summaries) => {
+				if (!cancelled) setAccessById(summaries);
+			})
+			.catch((err: unknown) => {
+				if (!cancelled && err instanceof AuthError) setAuthError(true);
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [telemetry]);
 
 	const handleUploaded = useCallback(() => {
 		void refetchFiles();
@@ -273,10 +317,13 @@ function AppShell() {
 						now={now}
 						selectedIds={selectedIds}
 						exitingIds={exitingIds}
+						telemetry={telemetry}
+						accessById={accessById}
 						onToggleOne={handleToggleOne}
 						onToggleAll={handleToggleAll}
 						onPatch={handlePatch}
 						onDeleteRequest={(id) => setPendingDeleteIds([id])}
+						onOpenLog={setLogTarget}
 						onBundlePatch={handleBundlePatch}
 						onBundleDeleteRequest={(id) => setPendingDeleteBundleId(id)}
 					/>
@@ -295,6 +342,11 @@ function AppShell() {
 				noun="folder"
 				onCancel={() => setPendingDeleteBundleId(null)}
 				onConfirm={handleConfirmDeleteBundle}
+			/>
+			<AccessLogDialog
+				target={logTarget}
+				onClose={() => setLogTarget(null)}
+				onAuthError={() => setAuthError(true)}
 			/>
 		</main>
 	);
