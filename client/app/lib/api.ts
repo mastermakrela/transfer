@@ -3,13 +3,13 @@
  * handling lives in ../../shared/api.ts, reused by the /d landing page too.
  */
 import { apiFetch } from "../../shared/api";
-import type { PublicBundleRecord, PublicFileRecord, Visibility } from "../../shared/api";
+import type { TeamBundleRecord, TeamFileRecord, Visibility } from "../../shared/api";
 
 export { AuthError, ApiError, deleteFile, patchFile, deleteBundle, patchBundle } from "../../shared/api";
 export type { Visibility } from "../../shared/api";
 
-export type FileRecord = PublicFileRecord;
-export type BundleRecord = PublicBundleRecord;
+export type FileRecord = TeamFileRecord;
+export type BundleRecord = TeamBundleRecord;
 
 export interface UsageSummary {
 	currentBytes: number;

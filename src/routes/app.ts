@@ -8,8 +8,8 @@ import {
 	getUsageSummary,
 	listBundles,
 	listFiles,
-	toPublicBundleRecord,
-	toPublicFileRecord,
+	toTeamBundleRecord,
+	toTeamFileRecord,
 	updateBundleRecord,
 	updateFileRecord,
 } from "../kv";
@@ -67,9 +67,9 @@ app.get("/app/api/files", async (c) => {
 	const [files, bundles] = await Promise.all([listFiles(c.env), listBundles(c.env)]);
 	const byId = new Map(files.map((f) => [f.id, f]));
 	return c.json({
-		files: files.filter((f) => !f.bundleId).map(toPublicFileRecord),
+		files: files.filter((f) => !f.bundleId).map(toTeamFileRecord),
 		bundles: bundles.map((b) =>
-			toPublicBundleRecord(
+			toTeamBundleRecord(
 				b,
 				b.fileIds.map((fid) => byId.get(fid)).filter((f): f is NonNullable<typeof f> => f != null),
 			),
@@ -135,9 +135,10 @@ app.patch("/app/api/bundles/:id", async (c) => {
 		expiresInSeconds: body.expiresInSeconds,
 		passwordHash,
 		passwordSalt,
+		password: passwordHash ? body.password : undefined,
 	});
 	if (!updated) return c.json({ error: "not found" }, 404);
-	return c.json(toPublicBundleRecord(updated, []));
+	return c.json(toTeamBundleRecord(updated, []));
 });
 
 app.delete("/app/api/bundles/:id", async (c) => {
@@ -173,9 +174,10 @@ app.patch("/app/api/files/:id", async (c) => {
 		expiresInSeconds: body.expiresInSeconds,
 		passwordHash,
 		passwordSalt,
+		password: passwordHash ? body.password : undefined,
 	});
 	if (!updated) return c.json({ error: "not found" }, 404);
-	return c.json(toPublicFileRecord(updated));
+	return c.json(toTeamFileRecord(updated));
 });
 
 app.delete("/app/api/files/:id", async (c) => {

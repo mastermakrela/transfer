@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { McpAgent } from "agents/mcp";
 import { z } from "zod";
-import { deleteBundleRecord, deleteFileRecord, getFile, getUsageSummary, listFiles, updateFileRecord } from "./kv";
+import { deleteBundleRecord, deleteFileRecord, getFile, getUsageSummary, listBundles, listFiles, updateFileRecord } from "./kv";
 import { hashPassword } from "./password";
 import { bundleUrl, downloadUrl, requestBundleUpload, requestUpload } from "./uploads";
 
@@ -33,7 +33,7 @@ When you have multiple files to hand over as a set (e.g. four Android builds for
 
 ## Managing files
 
-\`list_files\`, \`update_file\` (visibility/password/expiry), \`delete_file\`, \`delete_bundle\`, and \`get_usage\` (storage + monthly budget) are available to every authenticated team member.
+\`list_files\`, \`update_file\` (visibility/password/expiry), \`delete_file\`, \`delete_bundle\`, and \`get_usage\` (storage + monthly budget) are available to every authenticated team member. The password of a password-protected file can be read back later via \`list_files\` by any team member -- if someone forgot it, look it up there instead of rotating it.
 
 ## If the curl PUT is blocked
 
@@ -120,24 +120,31 @@ export class TransferMCP extends McpAgent<Env, unknown, AuthProps> {
 			"list_files",
 			{
 				title: "List uploaded files",
-				description: "List all currently stored files with size, owner, visibility, and expiry.",
+				description:
+					"List all currently stored files with size, owner, visibility, and expiry. Password-protected files include their plaintext password, so a team member who forgot it can retrieve it here instead of rotating it.",
 				inputSchema: {},
 			},
 			async () => {
-				const files = await listFiles(this.env);
+				const [files, bundles] = await Promise.all([listFiles(this.env), listBundles(this.env)]);
+				const bundleById = new Map(bundles.map((b) => [b.id, b]));
 				return json(
-					files.map((f) => ({
-						id: f.id,
-						filename: f.filename,
-						size: f.size,
-						owner: f.owner,
-						visibility: f.visibility,
-						has_password: Boolean(f.passwordHash),
-						created_at: new Date(f.createdAt).toISOString(),
-						expires_at: new Date(f.expiresAt).toISOString(),
-						download_url: downloadUrl(this.auth.origin, f),
-						bundle_id: f.bundleId ?? null,
-					})),
+					files.map((f) => {
+						// A bundled file is gated by its bundle, so that's where its password lives.
+						const gate = (f.bundleId && bundleById.get(f.bundleId)) || f;
+						return {
+							id: f.id,
+							filename: f.filename,
+							size: f.size,
+							owner: f.owner,
+							visibility: f.visibility,
+							has_password: Boolean(gate.passwordHash),
+							...(gate.password ? { password: gate.password } : {}),
+							created_at: new Date(f.createdAt).toISOString(),
+							expires_at: new Date(f.expiresAt).toISOString(),
+							download_url: downloadUrl(this.auth.origin, f),
+							bundle_id: f.bundleId ?? null,
+						};
+					}),
 				);
 			},
 		);
@@ -226,11 +233,14 @@ export class TransferMCP extends McpAgent<Env, unknown, AuthProps> {
 					expiresInSeconds: expires_in_seconds,
 					passwordHash,
 					passwordSalt,
+					password: passwordHash ? password : undefined,
 				});
 				if (!updated) return error(`no file with id ${id}`);
 				return json({
 					id: updated.id,
 					visibility: updated.visibility,
+					has_password: Boolean(updated.passwordHash),
+					...(updated.password ? { password: updated.password } : {}),
 					expires_at: new Date(updated.expiresAt).toISOString(),
 				});
 			},

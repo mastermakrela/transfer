@@ -2,7 +2,7 @@ import { Table } from "@cloudflare/kumo/components/table";
 import { Select } from "@cloudflare/kumo/components/select";
 import { Text } from "@cloudflare/kumo/components/text";
 import { Button } from "@cloudflare/kumo/components/button";
-import { CheckIcon, CopySimpleIcon, KeyIcon, TrashIcon } from "@phosphor-icons/react";
+import { CheckIcon, CopySimpleIcon, EyeIcon, EyeSlashIcon, KeyIcon, TrashIcon } from "@phosphor-icons/react";
 import { useState, type CSSProperties } from "react";
 
 import type { AccessSummary, FileRecord, Visibility } from "../lib/api";
@@ -46,7 +46,9 @@ export function FileRow({
 	const [savingField, setSavingField] = useState<"visibility" | "expiry" | null>(null);
 	const [passwordDialogMode, setPasswordDialogMode] = useState<"set" | "rotate" | null>(null);
 	const [passwordBusy, setPasswordBusy] = useState(false);
+	const [passwordRevealed, setPasswordRevealed] = useState(false);
 	const { copied: linkCopied, copy: copyLink } = useCopyFeedback();
+	const { copied: passwordCopied, copy: copyPassword } = useCopyFeedback();
 	const downloadHref = `/d/${file.id}/${encodeURIComponent(file.filename)}`;
 	const expired = file.expiresAt <= now;
 
@@ -148,6 +150,29 @@ export function FileRow({
 								onClick={() => setPasswordDialogMode("rotate")}
 							/>
 						)}
+						{file.visibility === "password" && file.password && (
+							<>
+								<Button
+									variant="ghost"
+									shape="square"
+									size="sm"
+									className="hit-target-square"
+									icon={passwordCopied ? <CheckIcon /> : <CopySimpleIcon />}
+									aria-label={`Copy password for ${file.filename}`}
+									onClick={() => copyPassword(file.password ?? "")}
+								/>
+								<Button
+									variant="ghost"
+									size="sm"
+									className="password-reveal"
+									icon={passwordRevealed ? <EyeSlashIcon /> : <EyeIcon />}
+									aria-label={passwordRevealed ? "Hide password" : "Show password"}
+									onClick={() => setPasswordRevealed((v) => !v)}
+								>
+									<span className="tabular">{passwordRevealed ? file.password : "••••••"}</span>
+								</Button>
+							</>
+						)}
 					</div>
 				</Table.Cell>
 				<Table.Cell>
@@ -185,6 +210,7 @@ export function FileRow({
 				mode={passwordDialogMode}
 				filename={file.filename}
 				busy={passwordBusy}
+				teamVisible
 				onCancel={() => setPasswordDialogMode(null)}
 				onConfirm={handlePasswordConfirm}
 			/>

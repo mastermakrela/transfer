@@ -265,6 +265,13 @@ p {
 	gap: 0.25rem;
 }
 
+/* Small "peek the password" toggle next to the change-password key icon --
+   kept visually quiet (no border/background) since the row is already dense. */
+.password-reveal {
+	color: var(--color-kumo-subtle);
+	font-weight: 400;
+}
+
 /* Icon-only trigger for the expiry detail popover -- deliberately minimal
    (no colored pill like Cloudflare's dashboard) to match this app's
    grayscale-only design language. */

@@ -8,11 +8,18 @@ interface SetPasswordDialogProps {
 	mode: "set" | "rotate" | null;
 	filename: string | null;
 	busy: boolean;
+	/**
+	 * Shows the "team members can see this later" note. Only /app (behind Cloudflare
+	 * Access) passes this -- the landing page also renders this dialog for
+	 * Access-authorized visitors changing a file's password, but that surface doubles
+	 * as the public download page and must not imply team visibility.
+	 */
+	teamVisible?: boolean;
 	onCancel: () => void;
 	onConfirm: (password: string) => void;
 }
 
-export function SetPasswordDialog({ mode, filename, busy, onCancel, onConfirm }: SetPasswordDialogProps) {
+export function SetPasswordDialog({ mode, filename, busy, teamVisible, onCancel, onConfirm }: SetPasswordDialogProps) {
 	const [password, setPassword] = useState("");
 
 	function handleOpenChange(open: boolean) {
@@ -38,6 +45,11 @@ export function SetPasswordDialog({ mode, filename, busy, onCancel, onConfirm }:
 						onValueChange={setPassword}
 						placeholder="Enter a password"
 					/>
+					{teamVisible && (
+						<p className="mt-2 text-kumo-subtle text-sm">
+							Team members can see this password later in the file manager — don&apos;t reuse a personal one.
+						</p>
+					)}
 				</div>
 				<div className="mt-6 flex justify-end gap-2">
 					<Button variant="secondary" disabled={busy} onClick={() => handleOpenChange(false)}>

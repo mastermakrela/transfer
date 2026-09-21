@@ -13,6 +13,14 @@ export interface FileRecord {
 	/** Only set when visibility is "password" -- PBKDF2, see src/password.ts. Never sent to clients, see toPublicFileRecord. */
 	passwordHash?: string;
 	passwordSalt?: string;
+	/**
+	 * Plaintext, kept alongside passwordHash so team members who forgot it can retrieve it
+	 * instead of having to rotate it. Only ever set together with passwordHash/passwordSalt,
+	 * and cleared whenever they are. Never exposed via PublicFileRecord -- see toTeamFileRecord
+	 * in kv.ts for the one shape allowed to carry it (Access-gated team members only, who can
+	 * already reset the password or make the file public, so this reveals no new capability).
+	 */
+	password?: string;
 	/** Set when this file is a member of a bundle. A bundled file defers all access
 	 * gating (visibility/password) to its parent bundle -- see resolveGate in download.ts. */
 	bundleId?: string;
@@ -35,6 +43,8 @@ export interface BundleRecord {
 	/** Same PBKDF2 scheme as FileRecord; only set when visibility is "password". */
 	passwordHash?: string;
 	passwordSalt?: string;
+	/** Plaintext counterpart of passwordHash -- see the doc comment on FileRecord.password. */
+	password?: string;
 }
 
 /** Structural gate shared by FileRecord and BundleRecord -- whichever one governs access. */
@@ -46,13 +56,23 @@ export interface Gated {
 }
 
 /** FileRecord shape safe to hand to any client -- see toPublicFileRecord in kv.ts. */
-export type PublicFileRecord = Omit<FileRecord, "passwordHash" | "passwordSalt"> & { hasPassword: boolean };
+export type PublicFileRecord = Omit<FileRecord, "passwordHash" | "passwordSalt" | "password"> & { hasPassword: boolean };
 
 /** BundleRecord shape safe to hand to any client, with its members resolved. */
-export type PublicBundleRecord = Omit<BundleRecord, "passwordHash" | "passwordSalt" | "fileIds"> & {
+export type PublicBundleRecord = Omit<BundleRecord, "passwordHash" | "passwordSalt" | "password" | "fileIds"> & {
 	hasPassword: boolean;
 	files: PublicFileRecord[];
 };
+
+/**
+ * FileRecord shape for Access-gated team members (the /app API, MCP tools): the public
+ * shape plus the plaintext password when one is set. Never reaches an unauthenticated
+ * client -- see toTeamFileRecord in kv.ts.
+ */
+export type TeamFileRecord = PublicFileRecord & { password?: string };
+
+/** BundleRecord counterpart of TeamFileRecord, with members resolved to TeamFileRecord too. */
+export type TeamBundleRecord = Omit<PublicBundleRecord, "files"> & { password?: string; files: TeamFileRecord[] };
 
 /** What a visitor did with a link. "zip" is a whole-bundle download via /f/:id/all.zip. */
 export type AccessKind = "view" | "download" | "zip";

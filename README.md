@@ -28,6 +28,8 @@ Uploads are presigned direct-to-R2 PUTs (1h URL validity, `Content-Length` signe
 
 MCP tool access and the `/app` file manager are gated by a Cloudflare Access "Self-hosted" application named `transfer`, covering the `/app*` and `/authorize` paths, with a policy allowing any member of your Cloudflare account (your Zero Trust team domain). Files themselves are team-visible, not owner-scoped — any account member can see and manage any file; uploads are attributed to the uploader's email for display only. OAuth's `/authorize` step auto-approves without a consent screen, since only account members can reach it and there's a single first-party tool set.
 
+Share-link passwords are stored in plaintext alongside the PBKDF2 hash, and any Access-authenticated team member can read one back via `/app` or the `list_files` MCP tool — there's no separate "reveal" permission. This is deliberate rather than a leak: anyone who can reach those APIs can already reset the password or flip the file to public, so showing the existing one grants no new capability, it just saves a rotation. The consequence is the same as for any team-visible secret — don't reuse a personal password for a shared link.
+
 R2 bucket jurisdiction is set via `R2_JURISDICTION` in `wrangler.jsonc` (defaults to `eu` — change or drop it to match wherever you create the bucket); presigned URLs are built from `ACCOUNT_ID` + `R2_BUCKET_NAME` + `R2_JURISDICTION`. If the bucket is EU-jurisdiction, `wrangler r2` commands against it need `--jurisdiction eu`. Bucket CORS (`r2-cors.json`) must allow `PUT` from your deployed Worker's origin for direct browser uploads.
 
 ## Access tracking ("who opened this")

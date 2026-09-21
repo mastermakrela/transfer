@@ -55,6 +55,7 @@ export async function requestUpload(env: Env, req: UploadRequest): Promise<Uploa
 		owner: req.owner,
 		passwordHash: hashed?.hash,
 		passwordSalt: hashed?.salt,
+		password: hashed ? req.password : undefined,
 	});
 
 	const uploadUrl = await presignUploadUrl(env, record.r2Key, record.size);
@@ -148,6 +149,7 @@ export async function requestBundleUpload(env: Env, req: BundleUploadRequest): P
 		expiresAt: now + ttlSeconds * 1000,
 		passwordHash: hashed?.hash,
 		passwordSalt: hashed?.salt,
+		password: hashed ? req.password : undefined,
 	});
 
 	return { ok: true, bundle, uploads };

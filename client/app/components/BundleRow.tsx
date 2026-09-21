@@ -2,7 +2,7 @@ import { Button } from "@cloudflare/kumo/components/button";
 import { Select } from "@cloudflare/kumo/components/select";
 import { Table } from "@cloudflare/kumo/components/table";
 import { Text } from "@cloudflare/kumo/components/text";
-import { CheckIcon, CopySimpleIcon, FolderIcon, KeyIcon, TrashIcon } from "@phosphor-icons/react";
+import { CheckIcon, CopySimpleIcon, EyeIcon, EyeSlashIcon, FolderIcon, KeyIcon, TrashIcon } from "@phosphor-icons/react";
 import { type CSSProperties, useState } from "react";
 
 import { ExpiryInfo } from "../../shared/ExpiryInfo";
@@ -40,7 +40,9 @@ export function BundleRow({
 	const [savingField, setSavingField] = useState<"visibility" | "expiry" | null>(null);
 	const [passwordDialogMode, setPasswordDialogMode] = useState<"set" | "rotate" | null>(null);
 	const [passwordBusy, setPasswordBusy] = useState(false);
+	const [passwordRevealed, setPasswordRevealed] = useState(false);
 	const { copied: linkCopied, copy: copyLink } = useCopyFeedback();
+	const { copied: passwordCopied, copy: copyPassword } = useCopyFeedback();
 	const folderHref = `/f/${bundle.id}`;
 	const totalSize = bundle.files.reduce((sum, f) => sum + f.size, 0);
 	const expired = bundle.expiresAt <= now;
@@ -145,6 +147,29 @@ export function BundleRow({
 								onClick={() => setPasswordDialogMode("rotate")}
 							/>
 						)}
+						{bundle.visibility === "password" && bundle.password && (
+							<>
+								<Button
+									variant="ghost"
+									shape="square"
+									size="sm"
+									className="hit-target-square"
+									icon={passwordCopied ? <CheckIcon /> : <CopySimpleIcon />}
+									aria-label={`Copy password for ${bundle.name}`}
+									onClick={() => copyPassword(bundle.password ?? "")}
+								/>
+								<Button
+									variant="ghost"
+									size="sm"
+									className="password-reveal"
+									icon={passwordRevealed ? <EyeSlashIcon /> : <EyeIcon />}
+									aria-label={passwordRevealed ? "Hide password" : "Show password"}
+									onClick={() => setPasswordRevealed((v) => !v)}
+								>
+									<span className="tabular">{passwordRevealed ? bundle.password : "••••••"}</span>
+								</Button>
+							</>
+						)}
 					</div>
 				</Table.Cell>
 				<Table.Cell>
@@ -182,6 +207,7 @@ export function BundleRow({
 				mode={passwordDialogMode}
 				filename={bundle.name}
 				busy={passwordBusy}
+				teamVisible
 				onCancel={() => setPasswordDialogMode(null)}
 				onConfirm={handlePasswordConfirm}
 			/>

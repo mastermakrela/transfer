@@ -5,6 +5,8 @@ import type {
 	Gated,
 	PublicBundleRecord,
 	PublicFileRecord,
+	TeamBundleRecord,
+	TeamFileRecord,
 	UsageCurrent,
 	UsageMonth,
 	Visibility,
@@ -12,14 +14,30 @@ import type {
 
 /** Strips password fields before a record ever reaches a client (browser or MCP tool). */
 export function toPublicFileRecord(record: FileRecord): PublicFileRecord {
-	const { passwordHash, passwordSalt, ...rest } = record;
+	const { passwordHash, passwordSalt, password, ...rest } = record;
 	return { ...rest, hasPassword: Boolean(passwordHash) };
 }
 
 /** Strips password fields and swaps fileIds for the resolved member records. */
 export function toPublicBundleRecord(bundle: BundleRecord, files: FileRecord[]): PublicBundleRecord {
-	const { passwordHash, passwordSalt, fileIds: _fileIds, ...rest } = bundle;
+	const { passwordHash, passwordSalt, password, fileIds: _fileIds, ...rest } = bundle;
 	return { ...rest, hasPassword: Boolean(passwordHash), files: files.map(toPublicFileRecord) };
+}
+
+/**
+ * Same as toPublicFileRecord but keeps the plaintext password, for Access-gated team
+ * members who are allowed to retrieve a forgotten password instead of rotating it.
+ */
+export function toTeamFileRecord(record: FileRecord): TeamFileRecord {
+	const pub = toPublicFileRecord(record);
+	return record.password ? { ...pub, password: record.password } : pub;
+}
+
+/** Bundle counterpart of toTeamFileRecord, with members resolved to TeamFileRecord too. */
+export function toTeamBundleRecord(bundle: BundleRecord, files: FileRecord[]): TeamBundleRecord {
+	const pub = toPublicBundleRecord(bundle, files);
+	const team: TeamBundleRecord = { ...pub, files: files.map(toTeamFileRecord) };
+	return bundle.password ? { ...team, password: bundle.password } : team;
 }
 
 const ID_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
@@ -85,7 +103,13 @@ export async function listFiles(env: Env): Promise<FileRecord[]> {
 export async function updateFileRecord(
 	env: Env,
 	id: string,
-	patch: { visibility?: Visibility; expiresInSeconds?: number; passwordHash?: string; passwordSalt?: string },
+	patch: {
+		visibility?: Visibility;
+		expiresInSeconds?: number;
+		passwordHash?: string;
+		passwordSalt?: string;
+		password?: string;
+	},
 ): Promise<FileRecord | null> {
 	const record = await getFile(env, id);
 	if (!record) return null;
@@ -94,6 +118,7 @@ export async function updateFileRecord(
 		if (patch.visibility !== "password") {
 			record.passwordHash = undefined;
 			record.passwordSalt = undefined;
+			record.password = undefined;
 		}
 	}
 	// Independent of whether visibility changed in this same patch -- lets a caller
@@ -101,6 +126,7 @@ export async function updateFileRecord(
 	if (patch.passwordHash && patch.passwordSalt) {
 		record.passwordHash = patch.passwordHash;
 		record.passwordSalt = patch.passwordSalt;
+		record.password = patch.password;
 	}
 	if (typeof patch.expiresInSeconds === "number") {
 		const ttl = Math.min(Math.max(patch.expiresInSeconds, env.MIN_TTL_SECONDS), env.MAX_TTL_SECONDS);
@@ -200,6 +226,7 @@ export interface CreateUploadInput {
 	owner: string;
 	passwordHash?: string;
 	passwordSalt?: string;
+	password?: string;
 	/** Set when this upload is a member of a bundle (gating then defers to the bundle). */
 	bundleId?: string;
 }
@@ -222,6 +249,7 @@ export async function createUpload(env: Env, input: CreateUploadInput): Promise<
 		expiresAt: now + input.ttlSeconds * 1000,
 		passwordHash: input.passwordHash,
 		passwordSalt: input.passwordSalt,
+		password: input.password,
 		bundleId: input.bundleId,
 	};
 
@@ -273,7 +301,13 @@ export async function getBundleFiles(env: Env, bundle: BundleRecord, now = Date.
 export async function updateBundleRecord(
 	env: Env,
 	id: string,
-	patch: { visibility?: Visibility; expiresInSeconds?: number; passwordHash?: string; passwordSalt?: string },
+	patch: {
+		visibility?: Visibility;
+		expiresInSeconds?: number;
+		passwordHash?: string;
+		passwordSalt?: string;
+		password?: string;
+	},
 ): Promise<BundleRecord | null> {
 	const bundle = await getBundle(env, id);
 	if (!bundle) return null;
@@ -282,11 +316,13 @@ export async function updateBundleRecord(
 		if (patch.visibility !== "password") {
 			bundle.passwordHash = undefined;
 			bundle.passwordSalt = undefined;
+			bundle.password = undefined;
 		}
 	}
 	if (patch.passwordHash && patch.passwordSalt) {
 		bundle.passwordHash = patch.passwordHash;
 		bundle.passwordSalt = patch.passwordSalt;
+		bundle.password = patch.password;
 	}
 	if (typeof patch.expiresInSeconds === "number") {
 		const ttl = Math.min(Math.max(patch.expiresInSeconds, env.MIN_TTL_SECONDS), env.MAX_TTL_SECONDS);

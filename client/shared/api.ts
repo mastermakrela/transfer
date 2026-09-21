@@ -83,6 +83,15 @@ export interface PublicBundleRecord {
 	files: PublicFileRecord[];
 }
 
+/**
+ * File/bundle shapes as seen inside /app (behind Cloudflare Access): same as the
+ * public shapes, plus the plaintext password when the record is password-protected.
+ * The worker only ever returns `password` from the Access-gated app API -- the
+ * public /d download endpoints keep serving PublicFileRecord/PublicBundleRecord.
+ */
+export type TeamFileRecord = PublicFileRecord & { password?: string };
+export type TeamBundleRecord = Omit<PublicBundleRecord, "files"> & { password?: string; files: TeamFileRecord[] };
+
 export function patchBundle(
 	id: string,
 	patch: { visibility?: Visibility; expiresInSeconds?: number; password?: string },
