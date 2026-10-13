@@ -30,7 +30,7 @@ async function denyRawAccess(c: Context<{ Bindings: Env }>, gate: Gated): Promis
 		const session = await verifyAccessSession(c.req.raw, c.env);
 		if (!session) return c.text("this is private — log in at /app first, then reopen this link\n", 401);
 	}
-	if (gate.visibility === "password" && !(await isUnlocked(c.req.raw, c.env, gate.id))) {
+	if (gate.visibility === "password" && !(await isUnlocked(c.req.raw, c.env, gate))) {
 		return c.text("this is password protected — open the landing page first to unlock it\n", 401);
 	}
 	return null;
@@ -51,7 +51,7 @@ async function denyPageAccess(
 	if (gate.visibility === "private" && !session) {
 		return c.html(renderShell({ title: "Sign in required", payload: { state: "sign-in-required" } }), 401);
 	}
-	if (gate.visibility === "password" && !(await isUnlocked(c.req.raw, c.env, gate.id))) {
+	if (gate.visibility === "password" && !(await isUnlocked(c.req.raw, c.env, gate))) {
 		if (shellOpts.lockedRedirect) return c.redirect(shellOpts.lockedRedirect, 302);
 		return c.html(
 			renderShell({
@@ -94,7 +94,7 @@ async function handleUnlock(
 		);
 	}
 
-	const cookie = await createUnlockCookie(c.env, gate.id);
+	const cookie = await createUnlockCookie(c.env, gate);
 	return new Response(null, { status: 303, headers: { Location: opts.redirectTo, "Set-Cookie": cookie } });
 }
 
