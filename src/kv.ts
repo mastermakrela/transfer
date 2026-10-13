@@ -88,13 +88,17 @@ async function putFile(env: Env, record: FileRecord): Promise<void> {
 	});
 }
 
-export async function listFiles(env: Env): Promise<FileRecord[]> {
-	const records: FileRecord[] = [];
+export const listFiles = (env: Env) => listRecords<FileRecord>(env, "file:");
+export const listBundles = (env: Env) => listRecords<BundleRecord>(env, "bundle:");
+
+/** Every record under a key prefix, newest first. */
+async function listRecords<T extends { createdAt: number }>(env: Env, prefix: string): Promise<T[]> {
+	const records: T[] = [];
 	let cursor: string | undefined;
 	do {
-		const page = await env.METADATA.list({ prefix: "file:", cursor });
+		const page = await env.METADATA.list({ prefix, cursor });
 		const batch = await Promise.all(page.keys.map((k) => env.METADATA.get(k.name)));
-		for (const raw of batch) if (raw) records.push(JSON.parse(raw) as FileRecord);
+		for (const raw of batch) if (raw) records.push(JSON.parse(raw) as T);
 		cursor = page.list_complete ? undefined : page.cursor;
 	} while (cursor);
 	return records.sort((a, b) => b.createdAt - a.createdAt);
@@ -278,18 +282,6 @@ async function putBundle(env: Env, bundle: BundleRecord): Promise<void> {
 export async function createBundle(env: Env, bundle: BundleRecord): Promise<BundleRecord> {
 	await putBundle(env, bundle);
 	return bundle;
-}
-
-export async function listBundles(env: Env): Promise<BundleRecord[]> {
-	const records: BundleRecord[] = [];
-	let cursor: string | undefined;
-	do {
-		const page = await env.METADATA.list({ prefix: "bundle:", cursor });
-		const batch = await Promise.all(page.keys.map((k) => env.METADATA.get(k.name)));
-		for (const raw of batch) if (raw) records.push(JSON.parse(raw) as BundleRecord);
-		cursor = page.list_complete ? undefined : page.cursor;
-	} while (cursor);
-	return records.sort((a, b) => b.createdAt - a.createdAt);
 }
 
 /** Resolves the member records of a bundle, dropping any that are missing or already expired. */
