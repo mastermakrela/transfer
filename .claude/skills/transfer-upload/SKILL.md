@@ -13,7 +13,7 @@ File sharing goes through the **transfer MCP server**. If its tools (`upload_fil
 4. PUT the bytes to the returned presigned URL: `curl -T <file> "<upload_url>"` — no auth headers; the URL is the credential and expires in 1 hour. The byte count must match `size_bytes` exactly or the signature check fails.
 5. Relay the returned `download_url` to the user — and the password too (as its own message), if you set one.
 
-The MCP server also exposes `list_files`, `update_file` (visibility/password/expiry), `delete_file`, and `get_usage`, plus a `transfer://usage-guide` resource with the same instructions.
+For several files that belong together, call `create_bundle` once instead (one folder link, one `upload_url` per file). The MCP server also exposes `list_files`, `update_file` (visibility/password/expiry), `delete_file`, `delete_bundle`, and `get_usage`, plus a `transfer://usage-guide` resource with the same instructions.
 
 ## If the MCP server is not connected
 
