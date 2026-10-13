@@ -129,14 +129,14 @@ export class TransferMCP extends McpAgent<Env, unknown, AuthProps> {
 				const bundleById = new Map(bundles.map((b) => [b.id, b]));
 				return json(
 					files.map((f) => {
-						// A bundled file is gated by its bundle, so that's where its password lives.
+						// A bundled file is gated by its bundle, so that's where its visibility and password live.
 						const gate = (f.bundleId && bundleById.get(f.bundleId)) || f;
 						return {
 							id: f.id,
 							filename: f.filename,
 							size: f.size,
 							owner: f.owner,
-							visibility: f.visibility,
+							visibility: gate.visibility,
 							has_password: Boolean(gate.passwordHash),
 							...(gate.password ? { password: gate.password } : {}),
 							created_at: new Date(f.createdAt).toISOString(),
