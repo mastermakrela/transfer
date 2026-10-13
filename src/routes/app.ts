@@ -155,18 +155,19 @@ app.patch("/app/api/files/:id", async (c) => {
 		password?: string;
 	}>();
 
+	// A folder's files are gated by the folder; settings saved on the file itself would do nothing.
+	const existing = await getFile(c.env, id);
+	if (existing?.bundleId) return c.json({ error: "this file is in a folder; change the folder instead" }, 409);
+
 	let passwordHash: string | undefined;
 	let passwordSalt: string | undefined;
 	if (body.password) {
 		({ hash: passwordHash, salt: passwordSalt } = await hashPassword(body.password));
-	} else if (body.visibility === "password") {
+	} else if (body.visibility === "password" && !existing?.passwordHash) {
 		// Switching an existing file to "password" without providing a new one is
 		// only valid if it already has one (a no-op visibility patch); otherwise
 		// there's nothing to gate downloads with.
-		const existing = await getFile(c.env, id);
-		if (!existing?.passwordHash) {
-			return c.json({ error: "password is required to set visibility to password" }, 400);
-		}
+		return c.json({ error: "password is required to set visibility to password" }, 400);
 	}
 
 	const updated = await updateFileRecord(c.env, id, {

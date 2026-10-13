@@ -88,31 +88,32 @@ async function putFile(env: Env, record: FileRecord): Promise<void> {
 	});
 }
 
-export async function listFiles(env: Env): Promise<FileRecord[]> {
-	const records: FileRecord[] = [];
+export const listFiles = (env: Env) => listRecords<FileRecord>(env, "file:");
+export const listBundles = (env: Env) => listRecords<BundleRecord>(env, "bundle:");
+
+/** Every record under a key prefix, newest first. */
+async function listRecords<T extends { createdAt: number }>(env: Env, prefix: string): Promise<T[]> {
+	const records: T[] = [];
 	let cursor: string | undefined;
 	do {
-		const page = await env.METADATA.list({ prefix: "file:", cursor });
+		const page = await env.METADATA.list({ prefix, cursor });
 		const batch = await Promise.all(page.keys.map((k) => env.METADATA.get(k.name)));
-		for (const raw of batch) if (raw) records.push(JSON.parse(raw) as FileRecord);
+		for (const raw of batch) if (raw) records.push(JSON.parse(raw) as T);
 		cursor = page.list_complete ? undefined : page.cursor;
 	} while (cursor);
 	return records.sort((a, b) => b.createdAt - a.createdAt);
 }
 
-export async function updateFileRecord(
-	env: Env,
-	id: string,
-	patch: {
-		visibility?: Visibility;
-		expiresInSeconds?: number;
-		passwordHash?: string;
-		passwordSalt?: string;
-		password?: string;
-	},
-): Promise<FileRecord | null> {
-	const record = await getFile(env, id);
-	if (!record) return null;
+interface GatePatch {
+	visibility?: Visibility;
+	expiresInSeconds?: number;
+	passwordHash?: string;
+	passwordSalt?: string;
+	password?: string;
+}
+
+/** The visibility / password / expiry rules shared by files and bundles. */
+function applyGatePatch(env: Env, record: FileRecord | BundleRecord, patch: GatePatch): void {
 	if (patch.visibility === "public" || patch.visibility === "private" || patch.visibility === "password") {
 		record.visibility = patch.visibility;
 		if (patch.visibility !== "password") {
@@ -122,7 +123,7 @@ export async function updateFileRecord(
 		}
 	}
 	// Independent of whether visibility changed in this same patch -- lets a caller
-	// rotate the password on an already password-protected file too.
+	// rotate the password on an already password-protected record too.
 	if (patch.passwordHash && patch.passwordSalt) {
 		record.passwordHash = patch.passwordHash;
 		record.passwordSalt = patch.passwordSalt;
@@ -132,6 +133,12 @@ export async function updateFileRecord(
 		const ttl = Math.min(Math.max(patch.expiresInSeconds, env.MIN_TTL_SECONDS), env.MAX_TTL_SECONDS);
 		record.expiresAt = Date.now() + ttl * 1000;
 	}
+}
+
+export async function updateFileRecord(env: Env, id: string, patch: GatePatch): Promise<FileRecord | null> {
+	const record = await getFile(env, id);
+	if (!record) return null;
+	applyGatePatch(env, record, patch);
 	await putFile(env, record);
 	return record;
 }
@@ -280,53 +287,17 @@ export async function createBundle(env: Env, bundle: BundleRecord): Promise<Bund
 	return bundle;
 }
 
-export async function listBundles(env: Env): Promise<BundleRecord[]> {
-	const records: BundleRecord[] = [];
-	let cursor: string | undefined;
-	do {
-		const page = await env.METADATA.list({ prefix: "bundle:", cursor });
-		const batch = await Promise.all(page.keys.map((k) => env.METADATA.get(k.name)));
-		for (const raw of batch) if (raw) records.push(JSON.parse(raw) as BundleRecord);
-		cursor = page.list_complete ? undefined : page.cursor;
-	} while (cursor);
-	return records.sort((a, b) => b.createdAt - a.createdAt);
-}
-
 /** Resolves the member records of a bundle, dropping any that are missing or already expired. */
 export async function getBundleFiles(env: Env, bundle: BundleRecord, now = Date.now()): Promise<FileRecord[]> {
 	const files = await Promise.all(bundle.fileIds.map((fid) => getFile(env, fid)));
 	return files.filter((f): f is FileRecord => f !== null && f.expiresAt > now);
 }
 
-export async function updateBundleRecord(
-	env: Env,
-	id: string,
-	patch: {
-		visibility?: Visibility;
-		expiresInSeconds?: number;
-		passwordHash?: string;
-		passwordSalt?: string;
-		password?: string;
-	},
-): Promise<BundleRecord | null> {
+export async function updateBundleRecord(env: Env, id: string, patch: GatePatch): Promise<BundleRecord | null> {
 	const bundle = await getBundle(env, id);
 	if (!bundle) return null;
-	if (patch.visibility === "public" || patch.visibility === "private" || patch.visibility === "password") {
-		bundle.visibility = patch.visibility;
-		if (patch.visibility !== "password") {
-			bundle.passwordHash = undefined;
-			bundle.passwordSalt = undefined;
-			bundle.password = undefined;
-		}
-	}
-	if (patch.passwordHash && patch.passwordSalt) {
-		bundle.passwordHash = patch.passwordHash;
-		bundle.passwordSalt = patch.passwordSalt;
-		bundle.password = patch.password;
-	}
+	applyGatePatch(env, bundle, patch);
 	if (typeof patch.expiresInSeconds === "number") {
-		const ttl = Math.min(Math.max(patch.expiresInSeconds, env.MIN_TTL_SECONDS), env.MAX_TTL_SECONDS);
-		bundle.expiresAt = Date.now() + ttl * 1000;
 		// Members share the bundle's lifetime, so the per-file cron sweep removes them in step.
 		for (const fid of bundle.fileIds) {
 			const file = await getFile(env, fid);

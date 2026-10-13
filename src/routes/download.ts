@@ -29,7 +29,7 @@ async function denyRawAccess(c: Context<{ Bindings: Env }>, gate: Gated): Promis
 		const session = await verifyAccessSession(c.req.raw, c.env);
 		if (!session) return c.text("this is private — log in at /app first, then reopen this link\n", 401);
 	}
-	if (gate.visibility === "password" && !(await isUnlocked(c.req.raw, c.env, gate.id))) {
+	if (gate.visibility === "password" && !(await isUnlocked(c.req.raw, c.env, gate))) {
 		return c.text("this is password protected — open the landing page first to unlock it\n", 401);
 	}
 	return null;
@@ -65,6 +65,13 @@ download.get("/d/:id/:filename/raw", async (c) => {
 	// presigned direct-to-R2 uploads usually don't set R2 http metadata — use the declared type
 	headers.set("content-type", record.contentType);
 	headers.set("etag", object.httpEtag);
+	headers.set("x-content-type-options", "nosniff");
+	// Uploaded HTML/SVG/XML opened directly would run as a page on this origin, next to a
+	// team member's Access session (it could call /app/api/* as them). Same flags as the
+	// landing page's preview iframe. Not applied to everything: PDFs don't render under a CSP sandbox.
+	if (/html|xml/i.test(record.contentType)) {
+		headers.set("content-security-policy", "sandbox allow-scripts allow-forms allow-popups");
+	}
 	headers.set(
 		"content-disposition",
 		wantsDownload ? `attachment; filename="${safeFilename}"` : `inline; filename="${safeFilename}"`,
@@ -94,7 +101,7 @@ download.get("/d/:id/:filename", async (c) => {
 	if (gate.visibility === "private" && !session) {
 		return c.html(renderShell({ title: "Sign in required", payload: { state: "sign-in-required" } }), 401);
 	}
-	if (gate.visibility === "password" && !(await isUnlocked(c.req.raw, c.env, gate.id))) {
+	if (gate.visibility === "password" && !(await isUnlocked(c.req.raw, c.env, gate))) {
 		// A bundled member unlocks at its folder (one unlock covers the whole set); a
 		// standalone file unlocks itself. Both set the same kind of unlock cookie.
 		if (bundle) return c.redirect(`/f/${bundle.id}`, 302);
@@ -195,7 +202,7 @@ download.post("/d/:id/:filename/unlock", async (c) => {
 		);
 	}
 
-	const cookie = await createUnlockCookie(c.env, record.id);
+	const cookie = await createUnlockCookie(c.env, record);
 	return new Response(null, {
 		status: 303,
 		headers: { Location: `/d/${record.id}/${record.filename}`, "Set-Cookie": cookie },
@@ -215,7 +222,7 @@ download.get("/f/:id", async (c) => {
 	if (bundle.visibility === "private" && !session) {
 		return c.html(renderShell({ title: "Sign in required", payload: { state: "sign-in-required" } }), 401);
 	}
-	if (bundle.visibility === "password" && !(await isUnlocked(c.req.raw, c.env, bundle.id))) {
+	if (bundle.visibility === "password" && !(await isUnlocked(c.req.raw, c.env, bundle))) {
 		return c.html(
 			renderShell({
 				title: bundle.name,
@@ -293,7 +300,7 @@ download.post("/f/:id/unlock", async (c) => {
 		);
 	}
 
-	const cookie = await createUnlockCookie(c.env, bundle.id);
+	const cookie = await createUnlockCookie(c.env, bundle);
 	return new Response(null, { status: 303, headers: { Location: `/f/${bundle.id}`, "Set-Cookie": cookie } });
 });
 
@@ -313,9 +320,10 @@ download.get("/f/:id/all.zip", async (c) => {
 
 	const files = await getBundleFiles(c.env, bundle);
 	const entries: Array<{ name: string; input: ReadableStream; size: number; lastModified: Date }> = [];
+	const taken = new Set<string>();
 	for (const f of files) {
 		const object = await c.env.FILES.get(f.r2Key);
-		if (object) entries.push({ name: f.filename, input: object.body, size: object.size, lastModified: new Date(f.createdAt) });
+		if (object) entries.push({ name: uniqueName(f.filename, taken), input: object.body, size: object.size, lastModified: new Date(f.createdAt) });
 	}
 	if (entries.length === 0) return c.text("this folder has no downloadable files\n", 404);
 
@@ -335,6 +343,17 @@ export default download;
 function rawUrl(record: FileRecord, opts: { download?: boolean } = {}): string {
 	const base = `/d/${record.id}/${record.filename}/raw`;
 	return opts.download ? `${base}?download=1` : base;
+}
+
+// Filenames are reduced to their basename on upload, so two folder members can share one
+// ("app-release.apk" from two build dirs); zip extractors would overwrite the first.
+function uniqueName(name: string, taken: Set<string>): string {
+	const dot = name.lastIndexOf(".");
+	const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ""];
+	let candidate = name;
+	for (let n = 2; taken.has(candidate); n++) candidate = `${stem} (${n})${ext}`;
+	taken.add(candidate);
+	return candidate;
 }
 
 function escapeHtml(input: string): string {
