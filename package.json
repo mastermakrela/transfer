@@ -11,7 +11,8 @@
     "cf-typegen": "wrangler types",
     "typecheck": "bun run typecheck:worker && bun run typecheck:client",
     "typecheck:worker": "tsc --noEmit -p tsconfig.json",
-    "typecheck:client": "tsc --noEmit -p tsconfig.client.json"
+    "typecheck:client": "tsc --noEmit -p tsconfig.client.json",
+    "test": "bun test unit"
   },
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "^0.8.1",
