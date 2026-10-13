@@ -226,6 +226,7 @@ export class TransferMCP extends McpAgent<Env, unknown, AuthProps> {
 				});
 				if (!result.ok) {
 					if (result.error === "password_required") return error('password is required to set visibility to "password"');
+					if (result.error === "in_bundle") return error(`file ${id} is in a folder; change the folder in /app instead`);
 					return error(`no file with id ${id}`);
 				}
 				const updated = result.record;

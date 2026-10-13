@@ -126,6 +126,9 @@ export interface UsageMonth {
 /**
  * Result of updateFileRecord/updateBundleRecord (kv.ts): "not_found" when the id doesn't
  * exist, "password_required" when the patch switches visibility to "password" without
- * either a new password or an existing hash to keep (see applyGatePatch in kv.ts).
+ * either a new password or an existing hash to keep (see applyGatePatch in kv.ts), "in_bundle"
+ * when the file is gated by its folder, so settings saved on the file itself would do nothing.
  */
-export type UpdateResult<T> = { ok: true; record: T } | { ok: false; error: "not_found" | "password_required" };
+export type UpdateResult<T> =
+	| { ok: true; record: T }
+	| { ok: false; error: "not_found" | "password_required" | "in_bundle" };
