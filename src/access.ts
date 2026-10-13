@@ -10,7 +10,7 @@ function getJwks(teamDomain: string) {
 	return jwks;
 }
 
-function getCookie(request: Request, name: string): string | null {
+export function getCookie(request: Request, name: string): string | null {
 	const header = request.headers.get("cookie");
 	if (!header) return null;
 	for (const part of header.split(";")) {

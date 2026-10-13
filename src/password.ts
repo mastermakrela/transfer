@@ -6,6 +6,7 @@
  * the scope actually asked for.
  */
 
+import { getCookie } from "./access";
 import type { Gated } from "./types";
 
 const PBKDF2_ITERATIONS = 100_000;
@@ -47,17 +48,6 @@ const UNLOCK_TTL_SECONDS = 60 * 60 * 24 * 30;
 
 function unlockCookieName(fileId: string): string {
 	return `transfer_unlock_${fileId}`;
-}
-
-function getCookie(request: Request, name: string): string | null {
-	const header = request.headers.get("cookie");
-	if (!header) return null;
-	for (const part of header.split(";")) {
-		const eq = part.indexOf("=");
-		if (eq === -1) continue;
-		if (part.slice(0, eq).trim() === name) return part.slice(eq + 1).trim();
-	}
-	return null;
 }
 
 // A token is only good for the password it was issued under: the salt is regenerated every
