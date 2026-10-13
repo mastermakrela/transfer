@@ -128,6 +128,13 @@ download.get("/d/:id/:filename/raw", async (c) => {
 	// presigned direct-to-R2 uploads usually don't set R2 http metadata — use the declared type
 	headers.set("content-type", record.contentType);
 	headers.set("etag", object.httpEtag);
+	headers.set("x-content-type-options", "nosniff");
+	// Uploaded HTML/SVG/XML opened directly would run as a page on this origin, next to a
+	// team member's Access session (it could call /app/api/* as them). Same flags as the
+	// landing page's preview iframe. Not applied to everything: PDFs don't render under a CSP sandbox.
+	if (/html|xml/i.test(record.contentType)) {
+		headers.set("content-security-policy", "sandbox allow-scripts allow-forms allow-popups");
+	}
 	headers.set(
 		"content-disposition",
 		wantsDownload ? `attachment; filename="${safeFilename}"` : `inline; filename="${safeFilename}"`,
