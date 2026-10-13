@@ -327,9 +327,10 @@ download.get("/f/:id/all.zip", async (c) => {
 	const files = await getBundleFiles(c.env, bundle);
 	const objects = await Promise.all(files.map((f) => c.env.FILES.get(f.r2Key)));
 	const entries: Array<{ name: string; input: ReadableStream; size: number; lastModified: Date }> = [];
+	const taken = new Set<string>();
 	files.forEach((f, i) => {
 		const object = objects[i];
-		if (object) entries.push({ name: f.filename, input: object.body, size: object.size, lastModified: new Date(f.createdAt) });
+		if (object) entries.push({ name: uniqueName(f.filename, taken), input: object.body, size: object.size, lastModified: new Date(f.createdAt) });
 	});
 	if (entries.length === 0) return c.text("this folder has no downloadable files\n", 404);
 
@@ -349,6 +350,17 @@ export default download;
 function rawUrl(record: FileRecord, opts: { download?: boolean } = {}): string {
 	const base = `/d/${record.id}/${record.filename}/raw`;
 	return opts.download ? `${base}?download=1` : base;
+}
+
+// Filenames are reduced to their basename on upload, so two folder members can share one
+// ("app-release.apk" from two build dirs); zip extractors would overwrite the first.
+function uniqueName(name: string, taken: Set<string>): string {
+	const dot = name.lastIndexOf(".");
+	const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ""];
+	let candidate = name;
+	for (let n = 2; taken.has(candidate); n++) candidate = `${stem} (${n})${ext}`;
+	taken.add(candidate);
+	return candidate;
 }
 
 function escapeHtml(input: string): string {
