@@ -29,7 +29,7 @@ async function denyRawAccess(c: Context<{ Bindings: Env }>, gate: Gated): Promis
 		const session = await verifyAccessSession(c.req.raw, c.env);
 		if (!session) return c.text("this is private — log in at /app first, then reopen this link\n", 401);
 	}
-	if (gate.visibility === "password" && !(await isUnlocked(c.req.raw, c.env, gate.id))) {
+	if (gate.visibility === "password" && !(await isUnlocked(c.req.raw, c.env, gate))) {
 		return c.text("this is password protected — open the landing page first to unlock it\n", 401);
 	}
 	return null;
@@ -101,7 +101,7 @@ download.get("/d/:id/:filename", async (c) => {
 	if (gate.visibility === "private" && !session) {
 		return c.html(renderShell({ title: "Sign in required", payload: { state: "sign-in-required" } }), 401);
 	}
-	if (gate.visibility === "password" && !(await isUnlocked(c.req.raw, c.env, gate.id))) {
+	if (gate.visibility === "password" && !(await isUnlocked(c.req.raw, c.env, gate))) {
 		// A bundled member unlocks at its folder (one unlock covers the whole set); a
 		// standalone file unlocks itself. Both set the same kind of unlock cookie.
 		if (bundle) return c.redirect(`/f/${bundle.id}`, 302);
@@ -202,7 +202,7 @@ download.post("/d/:id/:filename/unlock", async (c) => {
 		);
 	}
 
-	const cookie = await createUnlockCookie(c.env, record.id);
+	const cookie = await createUnlockCookie(c.env, record);
 	return new Response(null, {
 		status: 303,
 		headers: { Location: `/d/${record.id}/${record.filename}`, "Set-Cookie": cookie },
@@ -222,7 +222,7 @@ download.get("/f/:id", async (c) => {
 	if (bundle.visibility === "private" && !session) {
 		return c.html(renderShell({ title: "Sign in required", payload: { state: "sign-in-required" } }), 401);
 	}
-	if (bundle.visibility === "password" && !(await isUnlocked(c.req.raw, c.env, bundle.id))) {
+	if (bundle.visibility === "password" && !(await isUnlocked(c.req.raw, c.env, bundle))) {
 		return c.html(
 			renderShell({
 				title: bundle.name,
@@ -300,7 +300,7 @@ download.post("/f/:id/unlock", async (c) => {
 		);
 	}
 
-	const cookie = await createUnlockCookie(c.env, bundle.id);
+	const cookie = await createUnlockCookie(c.env, bundle);
 	return new Response(null, { status: 303, headers: { Location: `/f/${bundle.id}`, "Set-Cookie": cookie } });
 });
 
