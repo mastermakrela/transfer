@@ -220,13 +220,16 @@ export class TransferMCP extends McpAgent<Env, unknown, AuthProps> {
 				},
 			},
 			async ({ id, visibility, password, expires_in_seconds }) => {
+				// A folder's files are gated by the folder; settings saved on the file itself would do nothing.
+				const existing = await getFile(this.env, id);
+				if (existing?.bundleId) return error(`file ${id} is in a folder (${existing.bundleId}); change the folder in /app instead`);
+
 				let passwordHash: string | undefined;
 				let passwordSalt: string | undefined;
 				if (password) {
 					({ hash: passwordHash, salt: passwordSalt } = await hashPassword(password));
-				} else if (visibility === "password") {
-					const existing = await getFile(this.env, id);
-					if (!existing?.passwordHash) return error('password is required to set visibility to "password"');
+				} else if (visibility === "password" && !existing?.passwordHash) {
+					return error('password is required to set visibility to "password"');
 				}
 				const updated = await updateFileRecord(this.env, id, {
 					visibility,
