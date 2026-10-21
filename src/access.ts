@@ -1,4 +1,5 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
+import { getCookie } from "./cookies";
 
 // Cached across requests within the same isolate so we don't refetch the JWKS every time.
 let jwks: ReturnType<typeof createRemoteJWKSet> | undefined;
@@ -8,17 +9,6 @@ function getJwks(teamDomain: string) {
 		jwks = createRemoteJWKSet(new URL(`https://${teamDomain}.cloudflareaccess.com/cdn-cgi/access/certs`));
 	}
 	return jwks;
-}
-
-function getCookie(request: Request, name: string): string | null {
-	const header = request.headers.get("cookie");
-	if (!header) return null;
-	for (const part of header.split(";")) {
-		const eq = part.indexOf("=");
-		if (eq === -1) continue;
-		if (part.slice(0, eq).trim() === name) return part.slice(eq + 1).trim();
-	}
-	return null;
 }
 
 export interface AccessSession {

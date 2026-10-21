@@ -1,5 +1,4 @@
-import { checkQuota, clampTtlSeconds, createBundle, createUpload, generateId, sanitizeFilename } from "./kv";
-import { hashPassword } from "./password";
+import { checkQuota, clampTtlSeconds, createBundle, createUpload, createUploadBatch, generateId, sanitizeFilename } from "./kv";
 import { presignUploadUrl } from "./presign";
 import type { BundleRecord, FileRecord, Visibility } from "./types";
 
@@ -44,7 +43,6 @@ export async function requestUpload(env: Env, req: UploadRequest): Promise<Uploa
 	if (visibility === "password" && !req.password) {
 		return { ok: false, error: "password is required for password-protected files" };
 	}
-	const hashed = visibility === "password" && req.password ? await hashPassword(req.password) : undefined;
 
 	const record = await createUpload(env, {
 		filename: sanitizeFilename(req.filename),
@@ -53,9 +51,7 @@ export async function requestUpload(env: Env, req: UploadRequest): Promise<Uploa
 		visibility,
 		ttlSeconds: clampTtlSeconds(req.expiresIn === undefined ? undefined : String(req.expiresIn), env),
 		owner: req.owner,
-		passwordHash: hashed?.hash,
-		passwordSalt: hashed?.salt,
-		password: hashed ? req.password : undefined,
+		password: req.password,
 	});
 
 	const uploadUrl = await presignUploadUrl(env, record.r2Key, record.size);
@@ -116,16 +112,15 @@ export async function requestBundleUpload(env: Env, req: BundleUploadRequest): P
 	if (visibility === "password" && !req.password) {
 		return { ok: false, error: "password is required for password-protected folders" };
 	}
-	const hashed = visibility === "password" && req.password ? await hashPassword(req.password) : undefined;
 
 	const bundleId = generateId();
 	const ttlSeconds = clampTtlSeconds(req.expiresIn === undefined ? undefined : String(req.expiresIn), env);
 
-	const uploads: Array<{ record: FileRecord; uploadUrl: string }> = [];
-	for (const f of req.files) {
-		// Members mirror the bundle's visibility for display only -- resolveGate routes all
-		// real access checks through the bundle. Passwords live on the bundle, not members.
-		const record = await createUpload(env, {
+	// Members mirror the bundle's visibility for display only -- resolveGate routes all
+	// real access checks through the bundle. Passwords live on the bundle, not members.
+	const records = await createUploadBatch(
+		env,
+		req.files.map((f) => ({
 			filename: sanitizeFilename(f.filename),
 			contentType: f.contentType || "application/octet-stream",
 			size: f.size,
@@ -133,10 +128,13 @@ export async function requestBundleUpload(env: Env, req: BundleUploadRequest): P
 			ttlSeconds,
 			owner: req.owner,
 			bundleId,
-		});
-		const uploadUrl = await presignUploadUrl(env, record.r2Key, record.size);
-		uploads.push({ record, uploadUrl });
-	}
+		})),
+	);
+	const uploadUrls = await Promise.all(records.map((r) => presignUploadUrl(env, r.r2Key, r.size)));
+	const uploads: Array<{ record: FileRecord; uploadUrl: string }> = records.map((record, i) => ({
+		record,
+		uploadUrl: uploadUrls[i],
+	}));
 
 	const now = Date.now();
 	const bundle = await createBundle(env, {
@@ -147,9 +145,7 @@ export async function requestBundleUpload(env: Env, req: BundleUploadRequest): P
 		owner: req.owner,
 		createdAt: now,
 		expiresAt: now + ttlSeconds * 1000,
-		passwordHash: hashed?.hash,
-		passwordSalt: hashed?.salt,
-		password: hashed ? req.password : undefined,
+		password: req.password,
 	});
 
 	return { ok: true, bundle, uploads };

@@ -22,7 +22,7 @@ export interface FileRecord {
 	 */
 	password?: string;
 	/** Set when this file is a member of a bundle. A bundled file defers all access
-	 * gating (visibility/password) to its parent bundle -- see resolveGate in download.ts. */
+	 * gating (visibility/password) to its parent bundle -- see resolveGate/gateFor in kv.ts. */
 	bundleId?: string;
 }
 
@@ -122,3 +122,10 @@ export interface UsageMonth {
 	bytesUploaded: number;
 	uploadCount: number;
 }
+
+/**
+ * Result of updateFileRecord/updateBundleRecord (kv.ts): "not_found" when the id doesn't
+ * exist, "password_required" when the patch switches visibility to "password" without
+ * either a new password or an existing hash to keep (see applyGatePatch in kv.ts).
+ */
+export type UpdateResult<T> = { ok: true; record: T } | { ok: false; error: "not_found" | "password_required" };

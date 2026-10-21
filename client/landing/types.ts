@@ -50,7 +50,8 @@ export interface BundleData {
 	files: BundleFileEntry[];
 }
 
-/** Matches the `PageData` type src/routes/download.ts embeds in the page as JSON. */
+/** The payload shape src/routes/download.ts embeds in the page as JSON -- imported there
+ * via `import type`, so there is nothing to keep in sync. */
 export type PageData =
 	| FileData
 	| BundleData

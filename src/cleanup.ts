@@ -1,22 +1,21 @@
-import { deleteExpiredBundle, deleteExpiredFile } from "./kv";
+import { deleteBundleRecord, deleteFileRecord, listKeyPages } from "./kv";
 
 export async function runCleanup(env: Env): Promise<void> {
 	const now = Date.now();
 	// Bundles first: removing a bundle also drops its members, so the file pass below then
 	// only has to mop up loose files and any orphaned members (both idempotent).
-	await sweep(env, "bundle:", now, (id) => deleteExpiredBundle(env, id));
-	await sweep(env, "file:", now, (id) => deleteExpiredFile(env, id));
+	// detach:false -- see the comment on deleteFileRecord in kv.ts for why the cron path
+	// must not rewrite a bundle's member list here.
+	await sweep(env, "bundle:", now, (id) => deleteBundleRecord(env, id, { detach: false }));
+	await sweep(env, "file:", now, (id) => deleteFileRecord(env, id, { detach: false }));
 }
 
-async function sweep(env: Env, prefix: string, now: number, remove: (id: string) => Promise<void>): Promise<void> {
-	let cursor: string | undefined;
-	do {
-		const page = await env.METADATA.list({ prefix, cursor });
-		for (const key of page.keys) {
-			const meta = key.metadata as { expiresAt?: number } | undefined;
+async function sweep(env: Env, prefix: string, now: number, remove: (id: string) => Promise<unknown>): Promise<void> {
+	for await (const keys of listKeyPages<{ expiresAt?: number }>(env, prefix)) {
+		for (const key of keys) {
+			const meta = key.metadata;
 			if (!meta?.expiresAt || meta.expiresAt > now) continue;
 			await remove(key.name.slice(prefix.length));
 		}
-		cursor = page.list_complete ? undefined : page.cursor;
-	} while (cursor);
+	}
 }

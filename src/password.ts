@@ -5,6 +5,7 @@
  * a high-value account credential) -- no rate limiting or lockout, matching
  * the scope actually asked for.
  */
+import { getCookie } from "./cookies";
 
 const PBKDF2_ITERATIONS = 100_000;
 
@@ -45,17 +46,6 @@ const UNLOCK_TTL_SECONDS = 60 * 60 * 24 * 30;
 
 function unlockCookieName(fileId: string): string {
 	return `transfer_unlock_${fileId}`;
-}
-
-function getCookie(request: Request, name: string): string | null {
-	const header = request.headers.get("cookie");
-	if (!header) return null;
-	for (const part of header.split(";")) {
-		const eq = part.indexOf("=");
-		if (eq === -1) continue;
-		if (part.slice(0, eq).trim() === name) return part.slice(eq + 1).trim();
-	}
-	return null;
 }
 
 export async function isUnlocked(request: Request, env: Env, fileId: string): Promise<boolean> {

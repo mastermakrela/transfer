@@ -1,10 +1,9 @@
 import { Hono } from "hono";
 import { verifyAccessSession } from "../access";
 import {
+	type RecordPatch,
 	deleteBundleRecord,
 	deleteFileRecord,
-	getBundle,
-	getFile,
 	getUsageSummary,
 	listBundles,
 	listFiles,
@@ -13,7 +12,6 @@ import {
 	updateBundleRecord,
 	updateFileRecord,
 } from "../kv";
-import { hashPassword } from "../password";
 import { getAccessStats, listAccessSummaries } from "../telemetry";
 import { bundleUrl, downloadUrl, requestBundleUpload, requestUpload } from "../uploads";
 
@@ -113,32 +111,20 @@ app.post("/app/api/bundles", async (c) => {
 
 app.patch("/app/api/bundles/:id", async (c) => {
 	const id = c.req.param("id");
-	const body = await c.req.json<{
-		visibility?: "public" | "password" | "private";
-		expiresInSeconds?: number;
-		password?: string;
-	}>();
+	const body = await c.req.json<RecordPatch>();
 
-	let passwordHash: string | undefined;
-	let passwordSalt: string | undefined;
-	if (body.password) {
-		({ hash: passwordHash, salt: passwordSalt } = await hashPassword(body.password));
-	} else if (body.visibility === "password") {
-		const existing = await getBundle(c.env, id);
-		if (!existing?.passwordHash) {
-			return c.json({ error: "password is required to set visibility to password" }, 400);
-		}
-	}
-
-	const updated = await updateBundleRecord(c.env, id, {
+	const result = await updateBundleRecord(c.env, id, {
 		visibility: body.visibility,
 		expiresInSeconds: body.expiresInSeconds,
-		passwordHash,
-		passwordSalt,
-		password: passwordHash ? body.password : undefined,
+		password: body.password,
 	});
-	if (!updated) return c.json({ error: "not found" }, 404);
-	return c.json(toTeamBundleRecord(updated, []));
+	if (!result.ok) {
+		if (result.error === "password_required") {
+			return c.json({ error: "password is required to set visibility to password" }, 400);
+		}
+		return c.json({ error: "not found" }, 404);
+	}
+	return c.json(toTeamBundleRecord(result.record, []));
 });
 
 app.delete("/app/api/bundles/:id", async (c) => {
@@ -149,35 +135,20 @@ app.delete("/app/api/bundles/:id", async (c) => {
 
 app.patch("/app/api/files/:id", async (c) => {
 	const id = c.req.param("id");
-	const body = await c.req.json<{
-		visibility?: "public" | "password" | "private";
-		expiresInSeconds?: number;
-		password?: string;
-	}>();
+	const body = await c.req.json<RecordPatch>();
 
-	let passwordHash: string | undefined;
-	let passwordSalt: string | undefined;
-	if (body.password) {
-		({ hash: passwordHash, salt: passwordSalt } = await hashPassword(body.password));
-	} else if (body.visibility === "password") {
-		// Switching an existing file to "password" without providing a new one is
-		// only valid if it already has one (a no-op visibility patch); otherwise
-		// there's nothing to gate downloads with.
-		const existing = await getFile(c.env, id);
-		if (!existing?.passwordHash) {
-			return c.json({ error: "password is required to set visibility to password" }, 400);
-		}
-	}
-
-	const updated = await updateFileRecord(c.env, id, {
+	const result = await updateFileRecord(c.env, id, {
 		visibility: body.visibility,
 		expiresInSeconds: body.expiresInSeconds,
-		passwordHash,
-		passwordSalt,
-		password: passwordHash ? body.password : undefined,
+		password: body.password,
 	});
-	if (!updated) return c.json({ error: "not found" }, 404);
-	return c.json(toTeamFileRecord(updated));
+	if (!result.ok) {
+		if (result.error === "password_required") {
+			return c.json({ error: "password is required to set visibility to password" }, 400);
+		}
+		return c.json({ error: "not found" }, 404);
+	}
+	return c.json(toTeamFileRecord(result.record));
 });
 
 app.delete("/app/api/files/:id", async (c) => {

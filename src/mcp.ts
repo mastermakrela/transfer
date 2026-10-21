@@ -1,8 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { McpAgent } from "agents/mcp";
 import { z } from "zod";
-import { deleteBundleRecord, deleteFileRecord, getFile, getUsageSummary, listBundles, listFiles, updateFileRecord } from "./kv";
-import { hashPassword } from "./password";
+import { deleteBundleRecord, deleteFileRecord, gateFor, getUsageSummary, listBundles, listFiles, updateFileRecord } from "./kv";
 import { bundleUrl, downloadUrl, requestBundleUpload, requestUpload } from "./uploads";
 
 export interface AuthProps extends Record<string, unknown> {
@@ -130,7 +129,7 @@ export class TransferMCP extends McpAgent<Env, unknown, AuthProps> {
 				return json(
 					files.map((f) => {
 						// A bundled file is gated by its bundle, so that's where its password lives.
-						const gate = (f.bundleId && bundleById.get(f.bundleId)) || f;
+						const gate = gateFor(f, f.bundleId ? bundleById.get(f.bundleId) : null);
 						return {
 							id: f.id,
 							filename: f.filename,
@@ -220,22 +219,16 @@ export class TransferMCP extends McpAgent<Env, unknown, AuthProps> {
 				},
 			},
 			async ({ id, visibility, password, expires_in_seconds }) => {
-				let passwordHash: string | undefined;
-				let passwordSalt: string | undefined;
-				if (password) {
-					({ hash: passwordHash, salt: passwordSalt } = await hashPassword(password));
-				} else if (visibility === "password") {
-					const existing = await getFile(this.env, id);
-					if (!existing?.passwordHash) return error('password is required to set visibility to "password"');
-				}
-				const updated = await updateFileRecord(this.env, id, {
+				const result = await updateFileRecord(this.env, id, {
 					visibility,
 					expiresInSeconds: expires_in_seconds,
-					passwordHash,
-					passwordSalt,
-					password: passwordHash ? password : undefined,
+					password,
 				});
-				if (!updated) return error(`no file with id ${id}`);
+				if (!result.ok) {
+					if (result.error === "password_required") return error('password is required to set visibility to "password"');
+					return error(`no file with id ${id}`);
+				}
+				const updated = result.record;
 				return json({
 					id: updated.id,
 					visibility: updated.visibility,

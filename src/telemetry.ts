@@ -10,6 +10,7 @@
  * only reduced to a country/city and a browser+OS family. Nothing is set on the visitor
  * (no cookie, no pixel, no id), so two visits are indistinguishable from two visitors.
  */
+import { listKeyPages } from "./kv";
 import type { AccessEvent, AccessKind, AccessSummary, AccessSummaryWithEvents } from "./types";
 
 /** How many individual events are kept per link. Older ones fall off; counters keep counting. */
@@ -33,14 +34,11 @@ export async function getAccessStats(env: Env, id: string): Promise<AccessSummar
  */
 export async function listAccessSummaries(env: Env): Promise<Record<string, AccessSummary>> {
 	const summaries: Record<string, AccessSummary> = {};
-	let cursor: string | undefined;
-	do {
-		const page = await env.METADATA.list<AccessSummary>({ prefix: "hits:", cursor });
-		for (const key of page.keys) {
+	for await (const keys of listKeyPages<AccessSummary>(env, "hits:")) {
+		for (const key of keys) {
 			if (key.metadata) summaries[key.name.slice("hits:".length)] = key.metadata;
 		}
-		cursor = page.list_complete ? undefined : page.cursor;
-	} while (cursor);
+	}
 	return summaries;
 }
 
