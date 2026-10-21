@@ -1,0 +1,84 @@
+/*
+ * Rules shared verbatim between client/app/app.css and client/landing/app.css.
+ * Imported by both -- keep class names/selectors identical across both entry
+ * points, since components in client/shared render markup used by each.
+ */
+
+.tabular {
+	font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Hit-area helper -- some Kumo controls (icon-only "sm" square buttons) render
+ * visibly smaller than the 40x40px minimum target size. Rather than overriding
+ * Kumo's own size/padding (which would fight its internal button-size scale),
+ * pad the click target outward with an invisible pseudo-element. Only applied
+ * where there's enough surrounding whitespace that the expanded target can't
+ * overlap a neighboring control.
+ */
+.hit-target-square {
+	position: relative;
+}
+
+/* Pads evenly to ~40x40. */
+.hit-target-square::before {
+	content: "";
+	position: absolute;
+	inset: -7px;
+}
+
+.select-w-visibility {
+	width: 7rem;
+}
+
+.select-w-expiry {
+	width: 6rem;
+}
+
+/* Icon-only trigger for the expiry detail popover -- deliberately minimal
+   (no colored pill like Cloudflare's dashboard) to match this app's
+   grayscale-only design language. */
+.expiry-info-trigger {
+	appearance: none;
+	border: none;
+	background: transparent;
+	color: var(--text-color-kumo-subtle);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.25rem;
+	height: 1.25rem;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	transition-property: background-color, color;
+	transition-duration: 120ms;
+}
+
+.expiry-info-trigger:hover,
+.expiry-info-trigger[data-popup-open] {
+	background-color: var(--color-kumo-fill);
+	color: var(--text-color-kumo-default);
+}
+
+/* Popover.Content already supplies the card chrome (rounded-lg, shadow,
+   padding, bg-kumo-base) -- this just lays out the UTC/Relative/Timestamp
+   rows inside it. */
+.expiry-popover {
+	display: flex;
+	flex-direction: column;
+	gap: 0.6rem;
+	min-width: 15rem;
+}
+
+.expiry-popover-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	font-size: 0.8rem;
+}
+
+.expiry-popover-label {
+	color: var(--text-color-kumo-subtle);
+	white-space: nowrap;
+}

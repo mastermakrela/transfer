@@ -1,14 +1,13 @@
 import { Button, LinkButton } from "@cloudflare/kumo/components/button";
 import { Select } from "@cloudflare/kumo/components/select";
-import { Toasty, useKumoToastManager } from "@cloudflare/kumo/components/toast";
+import { Toasty } from "@cloudflare/kumo/components/toast";
 import { FolderIcon, KeyIcon } from "@phosphor-icons/react";
-import { useEffect, useState } from "react";
 
-import { ApiError, AuthError, patchFile, type Visibility } from "../shared/api";
 import { EXPIRY_OPTIONS } from "../shared/expiry-options";
 import { ExpiryInfo } from "../shared/ExpiryInfo";
 import { formatBytes, formatRelativeTime } from "../shared/format";
 import { SetPasswordDialog } from "../shared/SetPasswordDialog";
+import { usePatchableEntity } from "../shared/usePatchableEntity";
 import { BundleView } from "./components/BundleView";
 import { DeleteButton } from "./components/DeleteButton";
 import { HtmlPreview } from "./components/HtmlPreview";
@@ -19,8 +18,6 @@ import { QrBox } from "./components/QrBox";
 import { StatusPage } from "./components/StatusPage";
 import { TextPreview } from "./components/TextPreview";
 import type { FileData, PageData } from "./types";
-
-const NOW_TICK_MS = 45_000;
 
 export function LandingApp({ data }: { data: PageData }) {
 	if (data.state === "bundle") {
@@ -39,72 +36,18 @@ export function LandingApp({ data }: { data: PageData }) {
 }
 
 function ReadyView({ data }: { data: FileData }) {
-	const [now, setNow] = useState(() => Date.now());
-	// Access-authorized visitors (data.canManage) can change visibility/expiry right here,
-	// so these track the server's current values instead of the page-load snapshot in `data`.
-	const [visibility, setVisibility] = useState(data.visibility);
-	const [expiresAt, setExpiresAt] = useState(data.expiresAt);
-	const [savingField, setSavingField] = useState<"visibility" | "expiry" | null>(null);
-	const [passwordDialogMode, setPasswordDialogMode] = useState<"set" | "rotate" | null>(null);
-	const [passwordBusy, setPasswordBusy] = useState(false);
-	const toasts = useKumoToastManager();
-
-	useEffect(() => {
-		const id = setInterval(() => setNow(Date.now()), NOW_TICK_MS);
-		return () => clearInterval(id);
-	}, []);
-
-	function reportPatchError(err: unknown, title: string) {
-		const description =
-			err instanceof AuthError
-				? "Your session expired -- sign in again at /app."
-				: err instanceof ApiError
-					? err.message
-					: "update failed";
-		toasts.add({ variant: "error", title, description });
-	}
-
-	async function handlePatch(
-		field: "visibility" | "expiry",
-		patch: { visibility?: Visibility; expiresInSeconds?: number; password?: string },
-	) {
-		setSavingField(field);
-		try {
-			const updated = await patchFile(data.id, patch);
-			setVisibility(updated.visibility);
-			setExpiresAt(updated.expiresAt);
-		} catch (err) {
-			reportPatchError(err, "Couldn't update file");
-		} finally {
-			setSavingField(null);
-		}
-	}
-
-	function handleVisibilityChange(v: Visibility | null) {
-		if (!v || v === visibility) return;
-		if (v === "password") {
-			setPasswordDialogMode("set");
-			return;
-		}
-		void handlePatch("visibility", { visibility: v });
-	}
-
-	async function handlePasswordConfirm(password: string) {
-		setPasswordBusy(true);
-		try {
-			const updated = await patchFile(
-				data.id,
-				passwordDialogMode === "set" ? { visibility: "password", password } : { password },
-			);
-			setVisibility(updated.visibility);
-			setExpiresAt(updated.expiresAt);
-		} catch (err) {
-			reportPatchError(err, "Couldn't update password");
-		} finally {
-			setPasswordBusy(false);
-			setPasswordDialogMode(null);
-		}
-	}
+	const {
+		now,
+		visibility,
+		expiresAt,
+		savingField,
+		passwordDialogMode,
+		setPasswordDialogMode,
+		passwordBusy,
+		handlePatch,
+		handleVisibilityChange,
+		handlePasswordConfirm,
+	} = usePatchableEntity("files", data.id, data, "file");
 
 	return (
 		<div className="page">

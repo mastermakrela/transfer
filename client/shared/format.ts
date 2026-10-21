@@ -1,7 +1,6 @@
 /**
- * Small formatting helpers for the file manager UI. Deliberately not shared
- * with the Worker-side landing page (different runtime/bundler) -- see
- * task notes, not worth cross-wiring ~10 lines.
+ * Small formatting helpers shared between the /app file manager and the
+ * /d/:id/:filename landing page.
  */
 
 const BYTE_UNITS = ["B", "KB", "MB", "GB", "TB"];

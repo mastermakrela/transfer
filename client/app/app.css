@@ -6,6 +6,8 @@
  * covers the handful of layout primitives this app needs on top of that.
  */
 
+@import "../shared/shared.css";
+
 :root {
 	/* Kumo hardcodes `color-scheme: light` at :root and only flips to dark via
 	   a `[data-mode=dark]` attribute meant to be set by a JS theme toggle. This
@@ -36,10 +38,6 @@ p {
 
 .balance {
 	text-wrap: balance;
-}
-
-.tabular {
-	font-variant-numeric: tabular-nums;
 }
 
 .link-hover:hover {
@@ -146,14 +144,6 @@ p {
 	max-width: 12rem;
 }
 
-.select-w-visibility {
-	width: 7rem;
-}
-
-.select-w-expiry {
-	width: 6rem;
-}
-
 .dialog-header {
 	display: flex;
 	align-items: flex-start;
@@ -188,17 +178,12 @@ p {
  * an invisible pseudo-element. Only applied where there's enough surrounding
  * whitespace that the expanded target can't overlap a neighboring control.
  */
-.hit-target-square,
 .hit-target-tall {
 	position: relative;
 }
 
-/* For square icon buttons (~26px) -- pads evenly to ~40x40. */
-.hit-target-square::before {
-	content: "";
-	position: absolute;
-	inset: -7px;
-}
+/* .hit-target-square's own position:relative + ::before padding lives in
+   client/shared/shared.css (shared verbatim with client/landing/app.css). */
 
 /* For short, wide buttons (~26px tall, already wider than 40px) -- pads only
    vertically so two adjacent buttons in a row don't gain overlapping targets. */
@@ -272,53 +257,9 @@ p {
 	font-weight: 400;
 }
 
-/* Icon-only trigger for the expiry detail popover -- deliberately minimal
-   (no colored pill like Cloudflare's dashboard) to match this app's
-   grayscale-only design language. */
-.expiry-info-trigger {
-	appearance: none;
-	border: none;
-	background: transparent;
-	color: var(--text-color-kumo-subtle);
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 1.25rem;
-	height: 1.25rem;
-	border-radius: var(--radius-sm);
-	cursor: pointer;
-	transition-property: background-color, color;
-	transition-duration: 120ms;
-}
-
-.expiry-info-trigger:hover,
-.expiry-info-trigger[data-popup-open] {
-	background-color: var(--color-kumo-fill);
-	color: var(--text-color-kumo-default);
-}
-
-/* Popover.Content already supplies the card chrome (rounded-lg, shadow,
-   padding, bg-kumo-base) -- this just lays out the UTC/Relative/Timestamp
-   rows inside it. */
-.expiry-popover {
-	display: flex;
-	flex-direction: column;
-	gap: 0.6rem;
-	min-width: 15rem;
-}
-
-.expiry-popover-row {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 1rem;
-	font-size: 0.8rem;
-}
-
-.expiry-popover-label {
-	color: var(--text-color-kumo-subtle);
-	white-space: nowrap;
-}
+/* .expiry-info-trigger and .expiry-popover* (icon-only trigger + popover
+   layout for the expiry detail popup) live in client/shared/shared.css --
+   shared verbatim with client/landing/app.css. */
 
 /*
  * Telemetry mode -- the file table's hidden state, reached with the Konami code

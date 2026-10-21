@@ -43,8 +43,13 @@ export async function apiFetch<T>(input: string, init?: RequestInit): Promise<T>
 	return res.json() as Promise<T>;
 }
 
-export function deleteFile(id: string): Promise<{ ok: true }> {
-	return apiFetch(`/app/api/files/${id}`, { method: "DELETE" });
+/** Human-readable message for a caught error, e.g. inside a toast description. */
+export function describeError(err: unknown, fallback: string): string {
+	return err instanceof AuthError
+		? "Your session expired -- sign in again at /app."
+		: err instanceof ApiError
+			? err.message
+			: fallback;
 }
 
 export type Visibility = "public" | "password" | "private";
@@ -59,17 +64,6 @@ export interface PublicFileRecord {
 	createdAt: number;
 	expiresAt: number;
 	hasPassword: boolean;
-}
-
-export function patchFile(
-	id: string,
-	patch: { visibility?: Visibility; expiresInSeconds?: number; password?: string },
-): Promise<PublicFileRecord> {
-	return apiFetch(`/app/api/files/${id}`, {
-		method: "PATCH",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(patch),
-	});
 }
 
 export interface PublicBundleRecord {
@@ -92,17 +86,48 @@ export interface PublicBundleRecord {
 export type TeamFileRecord = PublicFileRecord & { password?: string };
 export type TeamBundleRecord = Omit<PublicBundleRecord, "files"> & { password?: string; files: TeamFileRecord[] };
 
-export function patchBundle(
+/** `kind` selects the /app/api/files or /app/api/bundles collection -- both share the same PATCH/DELETE shape. */
+export type RecordKind = "files" | "bundles";
+
+interface RecordShapes {
+	files: PublicFileRecord;
+	bundles: PublicBundleRecord;
+}
+
+export function patchRecord<K extends RecordKind>(
+	kind: K,
 	id: string,
 	patch: { visibility?: Visibility; expiresInSeconds?: number; password?: string },
-): Promise<PublicBundleRecord> {
-	return apiFetch(`/app/api/bundles/${id}`, {
+): Promise<RecordShapes[K]> {
+	return apiFetch(`/app/api/${kind}/${id}`, {
 		method: "PATCH",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(patch),
 	});
 }
 
+export function deleteRecord(kind: RecordKind, id: string): Promise<{ ok: true }> {
+	return apiFetch(`/app/api/${kind}/${id}`, { method: "DELETE" });
+}
+
+export function patchFile(
+	id: string,
+	patch: { visibility?: Visibility; expiresInSeconds?: number; password?: string },
+): Promise<PublicFileRecord> {
+	return patchRecord("files", id, patch);
+}
+
+export function deleteFile(id: string): Promise<{ ok: true }> {
+	return deleteRecord("files", id);
+}
+
+export function patchBundle(
+	id: string,
+	patch: { visibility?: Visibility; expiresInSeconds?: number; password?: string },
+): Promise<PublicBundleRecord> {
+	return patchRecord("bundles", id, patch);
+}
+
 export function deleteBundle(id: string): Promise<{ ok: true }> {
-	return apiFetch(`/app/api/bundles/${id}`, { method: "DELETE" });
+	return deleteRecord("bundles", id);
 }

@@ -150,39 +150,42 @@ function AppShell() {
 		void refetchUsage();
 	}, [refetchFiles, refetchUsage]);
 
-	const handlePatch = useCallback(
-		async (id: string, patch: { visibility?: Visibility; expiresInSeconds?: number; password?: string }) => {
+	// Shared by the file and folder patch handlers below: apply `apply`'s update to state on
+	// success, or surface `errorTitle` as a toast (unless it's an auth error, which the caller
+	// already redirects on).
+	const runPatch = useCallback(
+		async (apply: () => Promise<void>, errorTitle: string) => {
 			try {
-				const updated = await patchFile(id, patch);
-				setFiles((prev) => prev?.map((f) => (f.id === id ? updated : f)) ?? prev);
+				await apply();
 			} catch (err) {
 				if (err instanceof AuthError) {
 					setAuthError(true);
 				} else {
 					const message = err instanceof ApiError ? err.message : "update failed";
-					toasts.add({ variant: "error", title: "Couldn't update file", description: message });
+					toasts.add({ variant: "error", title: errorTitle, description: message });
 				}
 			}
 		},
 		[toasts],
 	);
 
+	const handlePatch = useCallback(
+		(id: string, patch: { visibility?: Visibility; expiresInSeconds?: number; password?: string }) =>
+			runPatch(async () => {
+				const updated = await patchFile(id, patch);
+				setFiles((prev) => prev?.map((f) => (f.id === id ? updated : f)) ?? prev);
+			}, "Couldn't update file"),
+		[runPatch],
+	);
+
 	const handleBundlePatch = useCallback(
-		async (id: string, patch: { visibility?: Visibility; expiresInSeconds?: number; password?: string }) => {
-			try {
+		(id: string, patch: { visibility?: Visibility; expiresInSeconds?: number; password?: string }) =>
+			runPatch(async () => {
 				const updated = await patchBundle(id, patch);
 				// PATCH returns the bundle without its members resolved; keep the existing files array.
 				setBundles((prev) => prev?.map((b) => (b.id === id ? { ...updated, files: b.files } : b)) ?? prev);
-			} catch (err) {
-				if (err instanceof AuthError) {
-					setAuthError(true);
-				} else {
-					const message = err instanceof ApiError ? err.message : "update failed";
-					toasts.add({ variant: "error", title: "Couldn't update folder", description: message });
-				}
-			}
-		},
-		[toasts],
+			}, "Couldn't update folder"),
+		[runPatch],
 	);
 
 	const handleConfirmDeleteBundle = useCallback(async () => {

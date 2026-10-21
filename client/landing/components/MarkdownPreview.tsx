@@ -1,5 +1,5 @@
 import { Tabs } from "@cloudflare/kumo/components/tabs";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -21,6 +21,37 @@ function readStoredView(): View {
 /** .md/.markdown files get a Preview/Source toggle; the choice is remembered across files via localStorage. */
 export function MarkdownPreview({ text }: { text: string }) {
 	const [view, setView] = useState<View>(readStoredView);
+
+	// The parent re-renders every NOW_TICK_MS (the sidebar's relative-expiry clock) and
+	// on dialog toggles -- memoize the parsed tree so those re-renders don't re-run
+	// remark/rehype on the whole document each time.
+	const rendered = useMemo(
+		() => (
+			<ReactMarkdown
+				remarkPlugins={[remarkGfm]}
+				components={{
+					code(props) {
+						const { children, className, node } = props;
+						const isBlock = node?.position ? node.position.start.line !== node.position.end.line : false;
+						if (!isBlock) return <code className={className}>{children}</code>;
+						const match = /language-(\w+)/.exec(className ?? "");
+						const lang = match?.[1];
+						const code = String(children).replace(/\n$/, "");
+						if (lang === "mermaid") return <MermaidBlock code={code} />;
+						return <ShikiBlock code={code} lang={lang ?? "text"} />;
+					},
+					pre({ children }) {
+						// The `code` override above already renders the final block markup
+						// (Shiki's own <pre> or a mermaid <svg>) -- don't wrap it twice.
+						return <>{children}</>;
+					},
+				}}
+			>
+				{text}
+			</ReactMarkdown>
+		),
+		[text],
+	);
 
 	function handleChange(value: string) {
 		const next: View = value === "source" ? "source" : "preview";
@@ -47,30 +78,7 @@ export function MarkdownPreview({ text }: { text: string }) {
 			/>
 			<div className="markdown-pane-body">
 				{view === "preview" ? (
-					<div className="markdown-body">
-						<ReactMarkdown
-							remarkPlugins={[remarkGfm]}
-							components={{
-								code(props) {
-									const { children, className, node } = props;
-									const isBlock = node?.position ? node.position.start.line !== node.position.end.line : false;
-									if (!isBlock) return <code className={className}>{children}</code>;
-									const match = /language-(\w+)/.exec(className ?? "");
-									const lang = match?.[1];
-									const code = String(children).replace(/\n$/, "");
-									if (lang === "mermaid") return <MermaidBlock code={code} />;
-									return <ShikiBlock code={code} lang={lang ?? "text"} />;
-								},
-								pre({ children }) {
-									// The `code` override above already renders the final block markup
-									// (Shiki's own <pre> or a mermaid <svg>) -- don't wrap it twice.
-									return <>{children}</>;
-								},
-							}}
-						>
-							{text}
-						</ReactMarkdown>
-					</div>
+					<div className="markdown-body">{rendered}</div>
 				) : (
 					<ShikiBlock code={text} lang="markdown" />
 				)}

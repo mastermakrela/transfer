@@ -102,7 +102,6 @@ export function FileList({
 									bundle={bundle}
 									now={now}
 									index={index}
-									exiting={false}
 									telemetry={telemetry}
 									access={accessById[bundle.id]}
 									onPatch={(patch) => onBundlePatch(bundle.id, patch)}

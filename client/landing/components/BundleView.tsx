@@ -1,85 +1,29 @@
 import { Button, LinkButton } from "@cloudflare/kumo/components/button";
 import { Select } from "@cloudflare/kumo/components/select";
-import { useKumoToastManager } from "@cloudflare/kumo/components/toast";
 import { DownloadSimpleIcon, FolderIcon, KeyIcon } from "@phosphor-icons/react";
-import { useEffect, useState } from "react";
 
-import { ApiError, AuthError, patchBundle, type Visibility } from "../../shared/api";
 import { EXPIRY_OPTIONS } from "../../shared/expiry-options";
 import { ExpiryInfo } from "../../shared/ExpiryInfo";
 import { formatBytes, formatRelativeTime } from "../../shared/format";
 import { SetPasswordDialog } from "../../shared/SetPasswordDialog";
+import { usePatchableEntity } from "../../shared/usePatchableEntity";
 import type { BundleData, BundleFileEntry } from "../types";
 import { LinkBox } from "./LinkBox";
 import { QrBox } from "./QrBox";
 
-const NOW_TICK_MS = 45_000;
-
 export function BundleView({ data }: { data: BundleData }) {
-	const [now, setNow] = useState(() => Date.now());
-	const [visibility, setVisibility] = useState(data.visibility);
-	const [expiresAt, setExpiresAt] = useState(data.expiresAt);
-	const [savingField, setSavingField] = useState<"visibility" | "expiry" | null>(null);
-	const [passwordDialogMode, setPasswordDialogMode] = useState<"set" | "rotate" | null>(null);
-	const [passwordBusy, setPasswordBusy] = useState(false);
-	const toasts = useKumoToastManager();
-
-	useEffect(() => {
-		const id = setInterval(() => setNow(Date.now()), NOW_TICK_MS);
-		return () => clearInterval(id);
-	}, []);
-
-	function reportPatchError(err: unknown, title: string) {
-		const description =
-			err instanceof AuthError
-				? "Your session expired -- sign in again at /app."
-				: err instanceof ApiError
-					? err.message
-					: "update failed";
-		toasts.add({ variant: "error", title, description });
-	}
-
-	async function handlePatch(
-		field: "visibility" | "expiry",
-		patch: { visibility?: Visibility; expiresInSeconds?: number; password?: string },
-	) {
-		setSavingField(field);
-		try {
-			const updated = await patchBundle(data.id, patch);
-			setVisibility(updated.visibility);
-			setExpiresAt(updated.expiresAt);
-		} catch (err) {
-			reportPatchError(err, "Couldn't update folder");
-		} finally {
-			setSavingField(null);
-		}
-	}
-
-	function handleVisibilityChange(v: Visibility | null) {
-		if (!v || v === visibility) return;
-		if (v === "password") {
-			setPasswordDialogMode("set");
-			return;
-		}
-		void handlePatch("visibility", { visibility: v });
-	}
-
-	async function handlePasswordConfirm(password: string) {
-		setPasswordBusy(true);
-		try {
-			const updated = await patchBundle(
-				data.id,
-				passwordDialogMode === "set" ? { visibility: "password", password } : { password },
-			);
-			setVisibility(updated.visibility);
-			setExpiresAt(updated.expiresAt);
-		} catch (err) {
-			reportPatchError(err, "Couldn't update password");
-		} finally {
-			setPasswordBusy(false);
-			setPasswordDialogMode(null);
-		}
-	}
+	const {
+		now,
+		visibility,
+		expiresAt,
+		savingField,
+		passwordDialogMode,
+		setPasswordDialogMode,
+		passwordBusy,
+		handlePatch,
+		handleVisibilityChange,
+		handlePasswordConfirm,
+	} = usePatchableEntity("bundles", data.id, data, "folder");
 
 	return (
 		<div className="page">

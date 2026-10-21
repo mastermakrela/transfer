@@ -4,6 +4,8 @@
  * covers everything else this page needs with plain custom CSS.
  */
 
+@import "../shared/shared.css";
+
 :root {
 	color-scheme: light dark;
 }
@@ -26,10 +28,6 @@ h2 {
 
 p {
 	text-wrap: pretty;
-}
-
-.tabular {
-	font-variant-numeric: tabular-nums;
 }
 
 /* ---- Status pages: not-found / sign-in-required / password-required ---- */
@@ -140,68 +138,9 @@ p {
 	gap: 0.25rem;
 }
 
-.select-w-visibility {
-	width: 7rem;
-}
-
-.select-w-expiry {
-	width: 6rem;
-}
-
-/* Same hit-area padding trick as client/app/app.css -- the icon-only "sm"
-   square button (change-password key icon) renders smaller than the 40x40px
-   minimum target size. */
-.hit-target-square {
-	position: relative;
-}
-
-.hit-target-square::before {
-	content: "";
-	position: absolute;
-	inset: -7px;
-}
-
-.expiry-info-trigger {
-	appearance: none;
-	border: none;
-	background: transparent;
-	color: var(--text-color-kumo-subtle);
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 1.25rem;
-	height: 1.25rem;
-	border-radius: var(--radius-sm);
-	cursor: pointer;
-	transition-property: background-color, color;
-	transition-duration: 120ms;
-}
-
-.expiry-info-trigger:hover,
-.expiry-info-trigger[data-popup-open] {
-	background-color: var(--color-kumo-fill);
-	color: var(--text-color-kumo-default);
-}
-
-.expiry-popover {
-	display: flex;
-	flex-direction: column;
-	gap: 0.6rem;
-	min-width: 15rem;
-}
-
-.expiry-popover-row {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 1rem;
-	font-size: 0.8rem;
-}
-
-.expiry-popover-label {
-	color: var(--text-color-kumo-subtle);
-	white-space: nowrap;
-}
+/* .select-w-visibility, .select-w-expiry, .hit-target-square,
+   .expiry-info-trigger and .expiry-popover* live in
+   client/shared/shared.css -- shared verbatim with client/app/app.css. */
 
 /* Full link, written out, click-to-copy */
 .link-box {
