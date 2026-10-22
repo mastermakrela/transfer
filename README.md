@@ -6,7 +6,7 @@ An OAuth-protected **MCP server** hands out presigned R2 upload URLs, so agents 
 
 ## Routes
 
-- **`/mcp`** — MCP server (streamable HTTP) for AI agents. Tools: `upload_file` (returns a presigned PUT URL + download link), `list_files`, `update_file`, `delete_file`, `get_usage`; resource: `transfer://usage-guide`. Auth is OAuth: `@cloudflare/workers-oauth-provider` handles token issuance + dynamic client registration, and the `/authorize` endpoint sits behind Cloudflare Access ("Login with Cloudflare"), so only account members can connect. Connect with:
+- **`/mcp`** — MCP server (streamable HTTP) for AI agents. Tools: `upload_file` (returns a presigned PUT URL + download link), `create_bundle` (several files under one folder link), `list_files`, `update_file`, `delete_file`, `delete_bundle`, `get_usage`; resource: `transfer://usage-guide`. Auth is OAuth: `@cloudflare/workers-oauth-provider` handles token issuance + dynamic client registration, and the `/authorize` endpoint sits behind Cloudflare Access ("Login with Cloudflare"), so only account members can connect. Connect with:
 
   ```
   claude mcp add --transport http --scope global transfer https://<YOUR_WORKER_DOMAIN>/mcp
@@ -15,6 +15,7 @@ An OAuth-protected **MCP server** hands out presigned R2 upload URLs, so agents 
 - **`/app`** — the file manager (React + Kumo): upload via drag/drop, list/delete files, change visibility/password/expiry, copy a file's link, see usage vs. the monthly budget. Gated by the same Access application.
 - **`/d/:id/:filename`** — a file's landing/preview page (React + Kumo): shows metadata, a QR code, and an inline preview (image/video/audio/HTML/markdown/text, or a generic badge otherwise). Public files need no auth; private files require an active Access session; password-protected files prompt for a password (`/d/:id/:filename/unlock`, sets a scoped unlock cookie). Not-found, sign-in-required, and password-required all render through the same page shell using real Kumo components, not separate hand-rolled markup.
 - **`/d/:id/:filename/raw`** — the actual byte stream, used as the `<img>`/`<video>`/`<audio>` `src` and as the real download link (`?download=1` for `Content-Disposition: attachment`).
+- **`/f/:id`, `/f/:id/all.zip`** — a bundle's (shareable folder's) landing page and its "Download all" zip. The folder owns visibility/password/expiry for its files; password unlock is `/f/:id/unlock`.
 - **`/`** — a plain static page (no JS bundle) pointing people at `/app` and giving agents the MCP connect command.
 - **`/authorize`, `/token`, `/register`, `/.well-known/oauth-*`** — OAuth plumbing (token/register/metadata served automatically by `workers-oauth-provider`).
 

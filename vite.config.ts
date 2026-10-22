@@ -2,8 +2,8 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 // Builds client/app/ (a plain React app) into public/app/, which Cloudflare
-// Workers Assets then serves as static files -- see CLAUDE.md for why the
-// Worker itself is never involved in serving /app's HTML/JS/CSS.
+// Workers Assets then serves as static files, so the Worker itself is never
+// involved in serving /app's HTML/JS/CSS.
 export default defineConfig({
 	root: "client/app",
 	base: "/app/",

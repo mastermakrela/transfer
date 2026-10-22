@@ -128,14 +128,14 @@ export class TransferMCP extends McpAgent<Env, unknown, AuthProps> {
 				const bundleById = new Map(bundles.map((b) => [b.id, b]));
 				return json(
 					files.map((f) => {
-						// A bundled file is gated by its bundle, so that's where its password lives.
+						// A bundled file is gated by its bundle, so that's where its visibility and password live.
 						const gate = gateFor(f, f.bundleId ? bundleById.get(f.bundleId) : null);
 						return {
 							id: f.id,
 							filename: f.filename,
 							size: f.size,
 							owner: f.owner,
-							visibility: f.visibility,
+							visibility: gate.visibility,
 							has_password: Boolean(gate.passwordHash),
 							...(gate.password ? { password: gate.password } : {}),
 							created_at: new Date(f.createdAt).toISOString(),
@@ -226,6 +226,7 @@ export class TransferMCP extends McpAgent<Env, unknown, AuthProps> {
 				});
 				if (!result.ok) {
 					if (result.error === "password_required") return error('password is required to set visibility to "password"');
+					if (result.error === "in_bundle") return error(`file ${id} is in a folder; change the folder in /app instead`);
 					return error(`no file with id ${id}`);
 				}
 				const updated = result.record;

@@ -196,6 +196,7 @@ export async function updateFileRecord(
 ): Promise<UpdateResult<FileRecord>> {
 	const record = await getFile(env, id);
 	if (!record) return { ok: false, error: "not_found" };
+	if (record.bundleId) return { ok: false, error: "in_bundle" };
 	const gated = await applyGatePatch(record, patch);
 	if (!gated.ok) return gated;
 	if (typeof patch.expiresInSeconds === "number") {

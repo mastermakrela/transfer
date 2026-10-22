@@ -146,6 +146,7 @@ app.patch("/app/api/files/:id", async (c) => {
 		if (result.error === "password_required") {
 			return c.json({ error: "password is required to set visibility to password" }, 400);
 		}
+		if (result.error === "in_bundle") return c.json({ error: "this file is in a folder; change the folder instead" }, 409);
 		return c.json({ error: "not found" }, 404);
 	}
 	return c.json(toTeamFileRecord(result.record));

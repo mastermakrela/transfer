@@ -30,7 +30,7 @@ async function denyRawAccess(c: Context<{ Bindings: Env }>, gate: Gated): Promis
 		const session = await verifyAccessSession(c.req.raw, c.env);
 		if (!session) return c.text("this is private — log in at /app first, then reopen this link\n", 401);
 	}
-	if (gate.visibility === "password" && !(await isUnlocked(c.req.raw, c.env, gate.id))) {
+	if (gate.visibility === "password" && !(await isUnlocked(c.req.raw, c.env, gate))) {
 		return c.text("this is password protected — open the landing page first to unlock it\n", 401);
 	}
 	return null;
@@ -51,7 +51,7 @@ async function denyPageAccess(
 	if (gate.visibility === "private" && !session) {
 		return c.html(renderShell({ title: "Sign in required", payload: { state: "sign-in-required" } }), 401);
 	}
-	if (gate.visibility === "password" && !(await isUnlocked(c.req.raw, c.env, gate.id))) {
+	if (gate.visibility === "password" && !(await isUnlocked(c.req.raw, c.env, gate))) {
 		if (shellOpts.lockedRedirect) return c.redirect(shellOpts.lockedRedirect, 302);
 		return c.html(
 			renderShell({
@@ -94,7 +94,7 @@ async function handleUnlock(
 		);
 	}
 
-	const cookie = await createUnlockCookie(c.env, gate.id);
+	const cookie = await createUnlockCookie(c.env, gate);
 	return new Response(null, { status: 303, headers: { Location: opts.redirectTo, "Set-Cookie": cookie } });
 }
 
@@ -128,6 +128,13 @@ download.get("/d/:id/:filename/raw", async (c) => {
 	// presigned direct-to-R2 uploads usually don't set R2 http metadata — use the declared type
 	headers.set("content-type", record.contentType);
 	headers.set("etag", object.httpEtag);
+	headers.set("x-content-type-options", "nosniff");
+	// Uploaded HTML/SVG/XML opened directly would run as a page on this origin, next to a
+	// team member's Access session (it could call /app/api/* as them). Same flags as the
+	// landing page's preview iframe. Not applied to everything: PDFs don't render under a CSP sandbox.
+	if (/html|xml/i.test(record.contentType)) {
+		headers.set("content-security-policy", "sandbox allow-scripts allow-forms allow-popups");
+	}
 	headers.set(
 		"content-disposition",
 		wantsDownload ? `attachment; filename="${safeFilename}"` : `inline; filename="${safeFilename}"`,
@@ -320,9 +327,10 @@ download.get("/f/:id/all.zip", async (c) => {
 	const files = await getBundleFiles(c.env, bundle);
 	const objects = await Promise.all(files.map((f) => c.env.FILES.get(f.r2Key)));
 	const entries: Array<{ name: string; input: ReadableStream; size: number; lastModified: Date }> = [];
+	const taken = new Set<string>();
 	files.forEach((f, i) => {
 		const object = objects[i];
-		if (object) entries.push({ name: f.filename, input: object.body, size: object.size, lastModified: new Date(f.createdAt) });
+		if (object) entries.push({ name: uniqueName(f.filename, taken), input: object.body, size: object.size, lastModified: new Date(f.createdAt) });
 	});
 	if (entries.length === 0) return c.text("this folder has no downloadable files\n", 404);
 
@@ -342,6 +350,17 @@ export default download;
 function rawUrl(record: FileRecord, opts: { download?: boolean } = {}): string {
 	const base = `/d/${record.id}/${record.filename}/raw`;
 	return opts.download ? `${base}?download=1` : base;
+}
+
+// Filenames are reduced to their basename on upload, so two folder members can share one
+// ("app-release.apk" from two build dirs); zip extractors would overwrite the first.
+function uniqueName(name: string, taken: Set<string>): string {
+	const dot = name.lastIndexOf(".");
+	const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ""];
+	let candidate = name;
+	for (let n = 2; taken.has(candidate); n++) candidate = `${stem} (${n})${ext}`;
+	taken.add(candidate);
+	return candidate;
 }
 
 function escapeHtml(input: string): string {
